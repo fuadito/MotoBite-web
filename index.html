@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KFC Narok -Delivery Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+<!--TOAST NOTIFICATIONS-->
+<!-- Status, tells screen readers it's a status message.-->
+ <!--Polite, announces new toasts to assistive devices-->
+ <!--True, reads the entire message, not just changes-->
+<aside id="toasts" role="status" aria-live="polite" aria-atomic="true"></aside>
+
+<!--LANDING-->
+<section id="s-landing" class="screen on">
+    <div class="land-bg"></div>
+    <div class="land-grid"></div>
+    <div class="land-inner">
+        <header class="land-hdr">
+            <div class="land-mark">KFC</div>
+            <div><div class="land-brand-name">KFC Narok</div><div class="land-brand-sub">Delivery Platform</div></div>
+        </header>
+
+        <!--HERO SECTION-->
+        <article class="land-hero">
+            <div class="land-eyebrow"><span class="live-dot"></span>Live in Narok Town</div>
+            <h1 class="land-title">KARIBU<br>NAROK<br><span class="land-accent">it's finger licking good.</span></h1>
+            <p class="land-sub">Customers order. Kitchen cooks. Riders deliver.</p>
+            <div class="role-label">Select your role to continue</div>
+            <div class="role-grid">
+                <div class="role-card" data-r="customer" onclick="selectRole('customer')">
+                    <span class="role-icon">🍗</span>
+                    <div class="role-name">Customer</div>
+                    <div class="role-desc">Order food &amp; track delivery</div>
+                </div>
+
+                 <div class="role-card" data-r="rider" onclick="selectRole('rider')">
+                    <span class="role-icon">🏍️</span>
+                    <div class="role-name">Rider</div>
+                    <div class="role-desc"> Manage deliveries &amp; earn</div>
+                </div>
+
+                <div class="role-card" data-r="kitchen" onclick="selectRole('kitchen')">
+                    <span class="role-icon">👨‍🍳</span>
+                    <div class="role-name">Kitchen</div>
+                    <div class="role-desc"> Live order display board</div>
+                </div>
+
+                <div class="role-card" data-r="admin" onclick="selectRole('admin')">
+                <span class="role-icon">⚙️</span>
+                <div class="role-name">Admin</div>
+                <div class="role-desc">Manage the platform</div>
+            </div>
+
+            </div>
+    </article>
+   
+    <footer class="land-foot">KFC Narok</footer>
+    </div>
+</section>
+
+<!--AUTH-->
+<section id="s-auth" class="screen">
+    <button class="auth-back"  onclick="goLanding()">← Back</button>
+    <main class="auth-body">
+        <div class="auth-icon" id="ai"></div>
+        <h2 class="auth-title" id="at"></h2>
+        <p class="auth-sub" id="as"></p>
+        <form class="auth-form" id="af" onsubmit="return false;"></form>
+        <button class="btn btn-primary btn-full btn-lg" id="auth-btn" onclick="authSubmit()">Continue →</button>
+        <button class="btn btn-ghost btn-full" onclick="goLanding()">Cancel</button>
+    </main>
+</section>
+
+<!--CUSTOMER SECTION-->
+<section id="s-customer" class="screen">
+    <div>
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">NAROK</span></div><div class="tb-right"><span class="badge b-red">Customer</span><button class="exit-btn" onclick="exitRole()">Exit</button></div></div></header>
+        <main id="c-scroll">
+            <article id="cp-menu" class="sp on">
+                <div class="c-hero"><div class="c-hw"><div class="c-greet" id="c-greet">Welcome!</div><h1 class="c-title">WHAT ARE <br>YOUR CRAVINGS</h1><div class="c-pills"><span class="c-pill">🏍️ Fast delivery</span><span class="c-pill">📍 Narok Town</span><span class="c-pill">💳 M-Pesa</span></div></div></div>
+                <nav class="cat-bar" id="cat-bar"></nav>
+                <div class="menu-wrap" id="menu-list"></div>
+            </article>
+            <article id="cp-track" class="sp">
+                <div id="track-body"></div>
+            </article>
+
+            <article id="cp-history" class="sp">
+                    <h2 class="h3">ORDER HISTORY</h2>
+                    <div id="hist-list"></div>
+                </div>
+            </article>
+            <section id="cp-location" class="sp">
+                <div class="step-hdr"><div class="step-ico">📍</div><h2 class="step-tit">CONFIRM LOCATION</h2><p class="step-sub">We verify you're within 170km of KFC Narok</p></div>
+                <div class="step-bod">
+                    <div id="loc-ok-box" class="hidden"></div>
+                    <div id="loc-err-box" class="hidden"></div>
+                    <button class="btn btn-primary btn-full btn-lg" id="loc-btn" onclick="getLocation()">📍 Share My Location</button>
+                    <button class="btn btn-ghost btn-full" onclick="cPanel('menu')">← Back to Menu</button>
+                </div>
+            </section>
+            <section id="cp-payment" class="sp">
+    <div class="step-hdr">
+        <div class="step-ico">💳</div>
+        <h2 class="step-tit">PAY WITH M-PESA</h2>
+        <p class="step-sub">Paid directly to KFC Till <strong>9119681</strong></p>
+        <p class="step-sub" style="color:var(--orange);margin-top:4px;font-size:.78rem">⏳ Delivery fee agreed directly with your rider</p>
+    </div>
+    <div class="step-bod">
+        <div class="pay-big" id="pay-amt">KES 0</div>
+        <div class="pay-row"><span class="mpesa-chip">M-PESA</span><span>Till Number: <strong>9119681</strong> (KFC NAROK)</span></div>
+        <div style="background:var(--dark3);border-radius:var(--r);padding:14px 16px;margin:12px 0">
+            <div style="font-weight:600;color:var(--white);margin-bottom:10px;font-size:.85rem">HOW TO PAY:</div>
+            <div style="font-size:.83rem;color:var(--muted);display:flex;flex-direction:column;gap:7px">
+                <div>1. Open <strong style="color:var(--white)">M-Pesa</strong> on your phone</div>
+                <div>2. Select <strong style="color:var(--white)">Lipa na M-Pesa</strong></div>
+                <div>3. Select <strong style="color:var(--white)">Buy Goods & Services</strong></div>
+                <div>4. Enter Till: <strong style="color:var(--green)">9119681</strong></div>
+                <div>5. Enter amount: <strong style="color:var(--red)" id="pay-amt2">KES 0</strong></div>
+                <div>6. Enter your M-Pesa PIN and confirm</div>
+            </div>
+        </div>
+        <div class="pay-row">📦 <span>Delivery fee <strong style="color:var(--orange)">to be agreed with your rider</strong> — paid cash on delivery</span></div>
+        <button class="btn btn-primary btn-full btn-lg" id="pay-btn" onclick="initPay()">✅ I Have Paid — Place Order</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:9px" onclick="cPanel('location')">← Change Location</button>
+    </div>
+</section>
+
+         <section id="cp-rating" class="sp">
+        <div class="step-hdr"><div class="step-ico">⭐</div><h2 class="step-tit">RATE YOUR ORDER</h2><p class="step-sub">Help us keep the service great</p></div>
+        <div class="step-bod">
+          <div class="card">
+            <div class="card-t">FOOD QUALITY</div>
+            <div class="stars" id="food-stars">
+                <span class="star" onclick="setRating('food',1)">⭐</span>
+                <span class="star" onclick="setRating('food',2)">⭐</span>
+                <span class="star" onclick="setRating('food',3)">⭐</span>
+                <span class="star" onclick="setRating('food',4)">⭐</span>
+                <span class="star" onclick="setRating('food',5)">⭐</span>
+            </div>
+        </div>
+          <div class="card">
+            <div class="card-t">RIDER SERVICE</div>
+            <div class="stars" id="rider-stars">
+                <span class="star" onclick="setRating('rider',1)">⭐</span>
+                <span class="star" onclick="setRating('rider',2)">⭐</span>
+                <span class="star" onclick="setRating('rider',3)">⭐</span>
+                <span class="star" onclick="setRating('rider',4)">⭐</span>
+                <span class="star" onclick="setRating('rider',5)">⭐</span>
+            </div>
+        </div>
+          <button class="btn btn-primary btn-full btn-lg" onclick="submitRating()">Submit Rating 🙏</button>
+          <button class="btn btn-ghost btn-full" onclick="cPanel('menu')">Skip for now</button>
+        </div>
+      </section>  
+     </main>
+     <button class="cart-float hidden" id="cart-float" onclick="openCart()">
+        <div class="cf-l"><div class="cf-cnt" id="cf-cnt">0</div>View Order</div>
+        <div class="cf-p" id="cf-p">KES 0</div>
+     </button>
+     <nav class="bnav">
+        <button class="bnav-btn on" data-s="menu" onclick="cPanel('menu',this)"><span class="ni">🍗</span>Menu</button>
+        <button class="bnav-btn" data-s="track" onclick="cPanel('track',this)"><span class="ni">📦</span>Track</button>
+        <button class="bnav-btn" data-s="history" onclick="cPanel('history',this);loadHistory()"><span class="ni">📋</span>History</button>
+     </nav>
+    </div>
+    <div class="overlay" id="cart-ov" onclick="closeCart()"></div>
+    <aside class="sheet" id="cart-sh">
+        <div class="sh-in">
+            <div class="sh-handle"></div>
+            <div><h2 class="sh-title">YOUR ORDER</h2><button class="btn btn-ghost btn-sm" onclick="closeCart()"></button></div>
+            <div id="cart-items"></div>
+            <div id="cart-sum"></div>
+            <div id="cart-acts"></div>
+        </div>
+    </aside>
+</section>
+
+<!--RIDER SECTION-->
+<section id="s-rider" class="screen">
+    <div>
+        <main>
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">RIDER</span></div><div class="tb-right"><span class="badge b-blue">Rider</span><button class="exit-btn" onclick="exitRole()">Exit</button></div></div></header>
+        <div id="rider-content"></div>
+        <nav class="bnav">
+            <button class="bnav-btn on" data-s="home" onclick="rPanel('home',this)"><span class="ni">🏠</span>Home</button>
+            <button class="bnav-btn" data-s="delivery" onclick="rPanel('delivery',this)"><span class="ni">📦</span>Delivery</button>
+            <button class="bnav-btn" data-s="earnings" onclick="rPanel('earnings',this)"><span class="ni">💰</span>Earnings</button>
+        </nav>
+        </main>
+    </div>
+</section>
+
+<!--KITCHEN SECTION-->
+<section id="s-kitchen" class="screen">
+    <div>
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">KITCHEN</span></div><div class="tb-right"><span class="k-clock" id="k-clock">--:--</span><span class="badge b-orange">Kitchen</span><button class="exit-btn" onclick="exitRole()">Exit</button></div></div></header>
+         <main>
+            <div class="k-stats">
+                <div class="k-stat"><div class="ks-v" id="ks-new">0</div><div class="ks-l">Queued</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-cook">0</div><div class="ks-l">Cooking</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-rdy">0</div><div class="ks-l">Ready</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-done">0</div><div class="ks-l">Done Today</div></div>
+            </div>
+            <div class="k-board">
+                <section class="k-col cn"><div class="k-col-hdr"><span class="k-col-t">🆕 NEW ORDER</span><span class="k-col-ct" id="kc-n">0</span></div><div class="k-body" id="kb-new"></div></section>
+                <section class="k-col cc"><div class="k-col-hdr"><span class="k-col-t">🔥 COOKING</span><span class="k-col-ct" id="kc-c">0</span></div><div class="k-body" id="kb-cook"></div></section>
+                <section class="k-col cr"><div class="k-col-hdr"><span class="k-col-t">✅ READY</span><span class="k-col-ct" id="kc-r">0</span></div><div class="k-body" id="kb-rdy"></div></section>
+            </div>
+         </main>
+    </div>
+</section>
+
+<!--ADMIN SECTION-->
+<section id="s-admin" class="screen">
+    <div class="app-shell">
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">ADMIN</span></div><div class="tb-right"><span class="badge b-muted">Admin</span><button class="exit-btn" onclick="adminSignOut()">Sign Out</button></div></div></header> 
+        <main>
+           <nav class="a-tabs">
+            <button class="a-tab on" onclick="aTab('overview',this)">Overview</button>
+            <button class="a-tab" onclick="aTab('orders',this)">Orders</button>
+            <button class="a-tab" onclick="aTab('riders',this)">Riders</button>
+            <button class="a-tab" onclick="aTab('menu',this)">Menu</button>
+        </nav> 
+        <article id="ap-overview" class="sp on">
+            <div class="a-metrics" id="a-metrics"></div>
+            <section class="a-sec"><div class="asec-t">RECENT ORDERS <button class="btn btn-ghost btn-sm" onclick="aTab('orders',null)">View All →</button></div><div id="a-recent"></div></section>
+        </article>
+        <article id="ap-orders" class="sp"><section class="a-sec"><div id="a-orders"></div></section></article>
+        <article id="ap-riders" class="sp"><section class="a-sec"><div class="a-sec-t">PENDING APPROVAL</div><div id="a-riders"></div></section></article>
+        <article id="ap-menu" class="sp"><section class="a-sec"><div class="a-sec-t">MENU ITEMS</div><div id="a-menu"></div></section></article>
+        </main>    
+    </div>
+</section>
+<!--ADMIN LOGIN SCREEN-->
+<section id="s-admin-login" class="screen">
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-icon">⚙️</div>
+            <h2 class="auth-title">ADMIN LOGIN</h2>
+            <p class="auth-sub">Sign in with your admin email and password</p>
+            <div class="field">
+                <label for="email" class="field-lbl">Email</label>
+                <input type="email" class="inp" id="adm-email" placeholder="eg. admin@kfc.com" autocomplete="email" onkeydown="if(event.key==='Enter')adminLogin()"/>  
+            </div>
+        <div class="field">
+            <label for="password" class="field-lbl">Password</label>
+            <input type="password" class="inp" id="adm-pass" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')adminLogin()"/>
+        </div>
+        <div id="adm-err" class="auth-err" style="display: none"></div>
+        <button class="btn-red full-w" id="adm-login-btn" onclick="adminLogin()">Sign In →</button>
+        <div class="btn-ghost full-w" onclick="exitRole()" style="margin-top: 10px;">← Back </div>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</body>
+</html>
