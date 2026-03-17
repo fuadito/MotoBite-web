@@ -568,13 +568,31 @@ function removeCartItem(i){
     const ok=document.getElementById('loc-ok-box');
     btn.innerHTML='<span class="spin"></span> Getting location...'; btn.disabled=true;  
     err.classList.add('hidden');
-    navigator.geolocation.getCurrentPosition(pos=>{
+    navigator.geolocation.getCurrentPosition(async pos=>{
       const {latitude:lat,longitude:lng}=pos.coords;
       const dist=haversine(lat,lng,-1.0833,35.8667);
       if(dist>170){
           err.textContent=`❌ You're ${dist.toFixed(1)}km from KFC Narok. We only deliver within 170km.`;
           err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
       }
+
+       // Reverse geocode — get human-readable area name from coordinates
+      // Uses OpenStreetMap Nominatim ,no API key
+       let areaName = 'Narok Town';
+      try {
+        const geo = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const gd = await geo.json();
+        const a = gd.address || {};
+        // Build area string from most specific to least specific
+        // e.g. "Narok Town", "Nakuru CBD", "Naivasha"
+        areaName = a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
+      } catch(e) {
+        console.warn('Reverse geocode failed — using default area name');
+      }
+
       userLoc={lat,lng};
       ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
       ok.classList.remove('hidden');
