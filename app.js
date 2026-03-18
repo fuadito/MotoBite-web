@@ -315,6 +315,7 @@ async function authSubmit() {
     if(!code){ toast('Enter the kitchen passcode','err'); return reset(); }
     const r=await apiFetch('/api/kitchen/verify',{method:'POST',body:{code}});
     if(!r?.ok){ toast('Wrong passcode — ask your manager','err'); return reset(); }
+    localStorage.setItem('kfc_kitchen','1'); // save session
     reset(); launchKitchen();
 
   } else if(role==='admin'){
@@ -1459,6 +1460,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if(urlRole === 'admin'){
     screen('s-admin-login');
+    return;
+  }
+
+  // ── Restore sessions on page refresh ──────────────────────────────────────
+
+  // Restore kitchen session
+  if(localStorage.getItem('kfc_kitchen')){
+    role = 'kitchen';
+    launchKitchen();
+    return;
+  }
+
+  // Restore rider session
+  const savedRider = localStorage.getItem('kfc_rider');
+  if(savedRider){
+    try{
+      const rd = JSON.parse(savedRider);
+      user.phone = rd.phone;
+      const data = await apiFetch('/api/rider/login',{method:'POST',body:{phone:rd.phone}});
+      if(data && data.exists !== false){
+        riderState = {...riderState, ...data, phone:rd.phone};
+        role = 'rider';
+        launchRider();
+        return;
+      }
+    }catch{}
+  }
+
+  // Restore customer session
+  if(user.name && user.phone){
+    role = 'customer';
+    launchCustomer();
     return;
   }
 
