@@ -40,7 +40,7 @@ const MENU = {
         {id:1, name:'Streetwise 1',           price:390,   desc:'1pc OR / SPICY + Reg chips',                            img:'https://glovo.dhmedia.io/image/menus-glovo/products/635c67095267875bcc69f291c4f6260a710263bf6e12462212b1b9916605534a?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:2,  name:'Streetwise 1 with Rice',price:390,   desc:'1 pc Original Recipe + Colonel rice',                   img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/a9e87805-6236-e07a-6121-ed1485c09cf1.jpeg?a=52c9137d-05ab-0ded-0fff-21c34132e4cb'},
         {id:3, name:'Streetwise 2',           price:490,   desc:'2pcs OR / SPICY + Colonel Rice or Reg. fries',          img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/37fd6de8-12ad-4016-ab2e-ef3e491f4ee8.jpeg?a=2f70c603-e474-d115-c163-cf23286fc21b'},                
-        {id:4, name:'Streetwise 2 Large', price:590, desc:'2pcs OR / SPICY + Lrg. fries',                                img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/37fd6de8-12ad-4016-ab2e-ef3e491f4ee8.jpeg?a=2f70c603-e474-d115-c163-cf23286fc21b'},
+        {id:4, name:'Streetwise 2 Large',     price:590,   desc:'2pcs OR / SPICY + Lrg. fries',                          img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/37fd6de8-12ad-4016-ab2e-ef3e491f4ee8.jpeg?a=2f70c603-e474-d115-c163-cf23286fc21b'},
         {id:5, name:'Streetwise 2 Crunch',    price:450,   desc:'2pcs OR / SPICY + Tortilla chips',                      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/9f60ca25-162c-5872-e514-93615c9430a8.jpeg?a=2875a9d0-f24e-9f95-0c02-05772acc77ff'},
         {id:6, name:'Streetwise 3',           price:690,   desc:'3pcs OR / SPICY + Reg. fries',                          img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/1185e73b-10f6-f5d6-a3ad-564ce2dc0c09.jpeg?a=a55ab509-2f77-bffb-5bc1-69e8381b26ea'},
         {id:7, name:'Streetwise 3 with Rice', price:690,   desc:'3pcs OR / SPICY + Colonel Rice',                        img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/9ba70c82-600c-68f5-96bd-5ad7f6a784d2.jpeg?a=8cbc68dc-2d6e-8089-0b7a-ecbfd636dd97'},
@@ -398,7 +398,9 @@ const CHICKEN_CHOICE_IDS = new Set([
   1, 3, 4, 5, 6, 7, 9, 10, 11,          // Streetwise items
   46, 47, 48, 49, 50, 51, 52,            // Sharing Buckets
   31,                                     // Chicken Lunchbox
-  99                                      // Kiddie Meal 2
+  99,                                      // Kiddie Meal 2
+  16,17,20,21,22,23,24,25,                 // Burgers
+    1001,1002,1003,1004                    // Promos
 ]);
 
 
@@ -441,13 +443,13 @@ function showChickenPicker(item){
 
           <button class="chicken-opt" onclick="confirmChickenChoice('HC')">
             <div style="font-size:2rem;margin-bottom:6px">🔥</div>
-            <div style="font-family:var(--fh);font-size:1rem;letter-spacing:1px">HC</div>
+            <div style="font-family:var(--fh);font-size:1rem;letter-spacing:1px">Spicy</div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Hot &amp; Crispy</div>
           </button>
 
           <button class="chicken-opt" onclick="confirmChickenChoice('OR')">
             <div style="font-size:2rem;margin-bottom:6px">🍗</div>
-            <div style="font-family:var(--fh);font-size:1rem;letter-spacing:1px">OR</div>
+            <div style="font-family:var(--fh);font-size:1rem;letter-spacing:1px">Non-Spicy</div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Original Recipe</div>
           </button>
 
@@ -1333,6 +1335,11 @@ async function renderAdminMenu() {
             <label class="field-lbl">Image URL (optional)</label>
             <input class="inp" id="new-item-img" placeholder="https://..."/>
         </div>
+        <div class="field" style="margin-bottom:12px">
+            <label class="field-lbl">Position in Category</label>
+            <input class="inp" id="new-item-order" type="number" placeholder="e.g. 3 — leave blank to add at end" min="1"/>
+            <div style="font-size:.74rem;color:var(--muted);margin-top:4px">Lower number = appears higher in the list</div>
+        </div>
         <button class="btn btn-primary btn-full" onclick="addMenuItem()">+ Add to Menu</button>
     </div>`
 
@@ -1352,26 +1359,29 @@ async function renderAdminMenu() {
 
 
 async function addMenuItem() {
-    const name = document.getElementById('new-item-name')?.value.trim();
-    const category = document.getElementById('new-item-cat')?.value;
-    const price = document.getElementById('new-item-price')?.value.trim();
-    const img = document.getElementById('new-item-img')?.value.trim();
+    const name        = document.getElementById('new-item-name')?.value.trim();
+    const category    = document.getElementById('new-item-cat')?.value;
+    const price       = document.getElementById('new-item-price')?.value.trim();
+    const img         = document.getElementById('new-item-img')?.value.trim();
     const description = document.getElementById('new-item-desc')?.value.trim();
+    const sortOrder   = document.getElementById('new-item-order')?.value.trim();
 
     if(!name || !price){ toast('Name and price are required','err'); return; }
     const result = await apiFetch('/api/menu', {
       method: 'POST',
-      body: { name, category, price, description, img }
+      body: {
+        name, category, price, description, img,
+        sort_order: sortOrder ? parseInt(sortOrder) : 999
+      }
     });
 
     if(result?.success) {
       toast(`✅ ${name} added to menu!`, 'ok');
-       // Clear the form
-        document.getElementById('new-item-name').value = '';
+        document.getElementById('new-item-name').value  = '';
         document.getElementById('new-item-price').value = '';
-        document.getElementById('new-item-desc').value = '';
-        document.getElementById('new-item-img').value = '';
-        // Refresh the menu list
+        document.getElementById('new-item-desc').value  = '';
+        document.getElementById('new-item-img').value   = '';
+        document.getElementById('new-item-order').value = '';
         renderAdminMenu();
     } else {
       toast('Could not add item','err');
