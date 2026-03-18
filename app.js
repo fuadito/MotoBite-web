@@ -63,7 +63,7 @@ const MENU = {
         {id:21, name:'Double Crunch Burger Meal',   price: 890, desc:'Double Crunch Burger + Reg. chips + 500ml soda',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/f8c32194-96f3-49eb-437e-9d33377ee598.jpeg?a=cd6686fe-a21d-9350-64cd-1df38670a232'},
         {id:22, name:'Legend Burger',               price:690,  desc:'The legendary KFC burger',    img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/3b55a114-a25a-7a06-1b96-60d6002af506.jpeg?a=fdf9f88f-d102-f38a-d750-0e6bbf039073'},
         {id:23, name:'Legend Burger Meal',     price:890,     desc:'Legend Burger + Reg. chips + 500ml soda', img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/7fde61eb-f8c2-371e-ed06-faa9f0f0bf37.jpeg?a=ec46ad65-c649-c487-5cb2-1bf15e90415c'},
-        {id:24, name:'Nyama Nyama Burger',     price:850,     desc:'Nyama Nyama Burger'       , img:'https://glovo.dhmedia.io/image/menus-glovo/products/0f87a5a3e798d3ffb4bfa4601cc52eb25b6850bc01c102537993fca56e6ed2de?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
+        {id:24, name:'Nyama Nyama Burger',     price:850,     desc:'Nyama Nyama chicken burger',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/3b55a114-a25a-7a06-1b96-60d6002af506.jpeg?a=fdf9f88f-d102-f38a-d750-0e6bbf039073'},
         {id:25, name:'Nyama Nyama Burger Meal', price:1100,   desc:'Nyama Nyama Burger + Reg. chips + 500ml soda',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/147575e3-fedf-1acd-cda9-b0ef8f608a78.jpeg?a=3d44471c-8e0c-6ca1-31fe-1918e2f1b623'},
         {id:26, name:'Hash Brown Burger',      price:390,     desc:'Vegeterian burger with hashbrown',           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/441206d2-05ed-e644-fa66-29c268f4793a.jpeg?a=32d252ba-0fe9-5de6-2e65-bba24d9528c0'},
         {id:27, name:'Hash Brown Burger Meal',       price:590,  desc:'Hash Brown Burger + Reg. chips + 500ml soda',           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/7bd3de7c-781b-6b97-40e9-98b4e6a903c2.jpeg?a=16c5dd64-0087-69f1-9149-633aaadb2923'},
@@ -397,28 +397,68 @@ function renderMenu(cat){
 // Items that require a HC / OR chicken type choice before adding to cart
 // These are items whose description says "OR / SPICY" — not wings, burgers, nuggets or
 // items that already have a fixed type (Butter Chicken, Original Recipe only, Zinger etc.)
-const CHICKEN_CHOICE_IDS = new Set([
-  1, 3, 4, 5, 6, 7, 9, 10, 11,106,107,         // Streetwise items
-  46, 47, 48, 49, 50, 51, 52,            // Sharing Buckets
-  31,                                     // Chicken Lunchbox
-  99,                                      // Kiddie Meal 2
-  16,17,20,21,22,23,24,25,                 // Burgers
-  1001,1002,1003,1004                    // Promos
-]);
+// Determines whether an item needs the HC / OR chicken type picker
+// Returns true (full picker), 'OR_ONLY' (Original Recipe only), or false (no picker)
+// Uses name + description matching — works for hardcoded AND DB-loaded items
 
+function needsChickenChoice(item) {
+  const name = (item.name || '').toLowerCase();
+  const desc = (item.desc || item.description || '').toLowerCase();
 
+  // ── Hard exclusions ────────────────────────────────────────────────────────
+  if (name.includes('zinger'))           return false;
+  if (name.includes('sticky'))           return false;
+  if (name.includes('nugget'))           return false;
+  if (name.includes('pop'))              return false;
+  if (name.includes('strip'))            return false;
+  if (name.includes('bawa'))             return false;
+  if (name.includes('hash brown'))       return false;
+  if (name.includes('wrapstar'))         return false;
+  if (name.includes('rice wrap'))        return false;
+  if (name.includes('butter chicken') && !name.includes('streetwise')) return false;
+
+  // ── OR only — Colonel Burger is Original Recipe only ──────────────────────
+  if (name.includes('colonel burger'))   return 'OR_ONLY';
+
+  // ── Full HC / OR choice ────────────────────────────────────────────────────
+  if (name.includes('streetwise'))       return true;
+  if (desc.includes('or / spicy') || desc.includes('or/spicy')) return true;
+  if (name.includes('bucket'))           return true;
+  if (name.includes('dipping'))          return true;
+  if (name.includes('chicken lunchbox')) return true;
+  if (name.includes('kiddie meal 2'))    return true;
+  if (name.includes('mega wing box'))    return true;
+  if (name.includes('crunch burger'))    return true;
+  if (name.includes('double crunch'))    return true;
+  if (name.includes('legend burger'))    return true;
+  if (name.includes('nyama nyama'))      return true;
+  if (name.includes('box master'))       return true;
+  if (name.includes('crunch master'))    return true;
+
+  return false;
+}
 
 function addToCart(id){
   const item=Object.values(MENU).flat().find(i=>i.id===id);
   if(!item) return;
 
-   // Items with OR / SPICY choice — show picker before adding
-   if(CHICKEN_CHOICE_IDS.has(id)){
+  const choice = needsChickenChoice(item);
+
+  if(choice === 'OR_ONLY'){
+    // Auto-add with OR — no picker needed, just confirm to customer
+    cart.push({...item, desc: item.desc || item.description || '', note:'', chickenType:'OR'});
+    updateCartUI();
+    toast(`${item.name} (OR) added! 🛒`);
+    return;
+  }
+
+  if(choice === true){
     showChickenPicker(item);
     return;
   }
-  // All other items — add straight to cart
-  cart.push({...item, desc: item.desc || item.description || '',note:'', chickenType:null});
+
+  // No choice needed
+  cart.push({...item, desc: item.desc || item.description || '', note:'', chickenType:null});
   updateCartUI();
   toast(`${item.name} added! 🛒`);
 }
