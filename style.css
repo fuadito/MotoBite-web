@@ -943,6 +943,7 @@ a {
 }
 
 /* ── Brand New grid layout ───────────────────────────────────────── */
+/* ── Brand New grid layout ───────────────────────────────────────── */
 .mi-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1020,7 +1021,6 @@ a {
     color: var(--red);
     letter-spacing: 1px;
 }
-
 /* Cart Float */
 .cart-float {
     position: fixed;
