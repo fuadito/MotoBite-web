@@ -29,7 +29,7 @@ const DEMO_RIDERS = [];
 // DEMO DATA
 const MENU = {
 
-    Promos:[
+    'Brand New':[
         {id:1001, name:'Streetwise 9 Butter Chicken', price:1990, desc:'9 pcs Butter Chicken + chips', img:'https://glovo.dhmedia.io/image/menus-glovo/products/8114f8df70a749a6b666bce4d1e146e1a6f45e0026a3eb17a1c97b608fe768cd?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1002, name:'Mega Wing Box Chicken', price:790, desc:'Wings + Butter Chicken combo box',    img:'https://glovo.dhmedia.io/image/menus-glovo/products/e1f6b814dd2d1ee2c1397d014fd32aa3bccd0c030a8cb4159cefe776bd015577?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1003, name:'Dipping Box',      price:1990, desc:'6 Wings + 6 Strips + 12 Nuggets + Lrg chips + 3 dipping sauces',  img:'https://glovo.dhmedia.io/image/menus-glovo/products/41940fa143d81d7ae2daef32e43b7395dc289902db6458edc5fbf3ad9c2c3fcf?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
@@ -163,7 +163,7 @@ const MENU = {
         {id:97,  name:'Vanilla Choc Chip Ice Cream 750ml', price:550,  desc:'Vanilla choc chip ice cream tub 750ml',           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/c891af60-40ef-02cd-3cc6-01e37b04ab5a.jpeg?a=1e8c6be5-5725-629e-0d3c-41eb276af531'},
   ],
   
-  Kiddie:[
+  'Kiddie Meals':[
         {id:98,  name:'Kiddie Meal 1',  price:490,  desc:'6 Nuggets + Reg. chips + 350ml soda',      img:'https://glovo.dhmedia.io/image/menus-glovo/products/95395b9c31f3cf0e63a4a5cf5830eccc55fd46485612fb1aaf397636d815c7a1?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:99,  name:'Kiddie Meal 2',  price:450,  desc:'1 pc Chicken + Reg. chips + 350ml soda',   img:'https://glovo.dhmedia.io/image/menus-glovo/products/52d98da6cffc9931be62ca6551d8b7b4f727b39eeeda36ba0000e4d5c104a1c4?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:100, name:'Kiddie Meal 3',  price:550,  desc:'20 Pops + Reg. chips + 350ml soda',        img:'https://glovo.dhmedia.io/image/menus-glovo/products/73ff0591c9e74c1d6ff2e8f44ee9cd8fa70d9bcf7d4aa8136c224579f23e8a11?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
@@ -220,7 +220,7 @@ const F = {
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
     status: s=>({pending:'Awaiting payment',paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
     badge: s=>({pending:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
-    emoji: c=>({Promos:'🔥',Streetwise:'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦',Kiddie:'🧒',Dipping:'📦'})[c]||'🍽️'
+    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
 };
 
 function screen(id){
@@ -335,7 +335,7 @@ function exitRole(){
 }
 
 //CUSTOMER APP
-let curCat='Promos'
+let curCat='Brand New'
 
 async function launchCustomer(){
     screen('s-customer');
@@ -351,7 +351,7 @@ async function launchCustomer(){
       });
     }
 
-    renderCats(); renderMenu('Promos'); updateCartUI();
+    renderCats(); renderMenu('Brand New'); updateCartUI();
 
     // Restore active order on login
       const savedOid = localStorage.getItem('kfc_active_order');
