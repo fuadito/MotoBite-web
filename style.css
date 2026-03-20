@@ -942,6 +942,85 @@ a {
     transform: scale(1.18);
 }
 
+/* ── Brand New grid layout ───────────────────────────────────────── */
+.mi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding-bottom: 4px;
+}
+.mi-card {
+    background: var(--dark2);
+    border: 1.5px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all var(--dur) var(--ease);
+    animation: fadeUp .3s var(--ease) both;
+    display: flex;
+    flex-direction: column;
+}
+.mi-card:hover {
+    border-color: var(--red);
+    transform: translateY(-3px);
+}
+.mi-card-img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--dark3);
+}
+.mi-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform .4s var(--ease);
+}
+.mi-card:hover .mi-card-img img {
+    transform: scale(1.07);
+}
+.mi-card-emoji {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+}
+.mi-card-body {
+    padding: 10px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 3px;
+}
+.mi-card-name {
+    font-weight: 700;
+    font-size: .82rem;
+    line-height: 1.25;
+}
+.mi-card-desc {
+    font-size: .7rem;
+    color: var(--muted);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.mi-card-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+}
+.mi-card-price {
+    font-family: var(--fh);
+    font-size: .95rem;
+    color: var(--red);
+    letter-spacing: 1px;
+}
+
 /* Cart Float */
 .cart-float {
     position: fixed;
@@ -1201,7 +1280,13 @@ a {
     max-width: 500px;
     margin: 0 auto;
 }
-
+.trk-non {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--muted);
+    text-transform: uppercase;
+}
 .trk-st {
     font-family: var(--fh);
     font-size: 1.9rem;
@@ -1331,6 +1416,36 @@ a {
     100% {
         transform: scale(1);
     }
+}
+.hist-item {
+    background: var(--dark2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: 13px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 7px;
+}
+.hi-num {
+    font-family: var(--fh);
+    font-size: .92rem;
+    letter-spacing: 1px;
+}
+.hi-items {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.hi-date {
+    font-size: .7rem;
+    color: var(--muted);
+}
+.hi-p {
+    font-family: var(--fh);
+    font-size: .95rem;
+    color: var(--red);
+    letter-spacing: 1px;
 }
 
 
@@ -2119,7 +2234,40 @@ a {
 }
 
 /* Scrollable content area inside each role */
+.app-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
 
+
+/* Auth buttons spacing */
+.auth-submit-btn { margin-top: 14px; }
+.auth-cancel-btn { margin-top: 8px; }
+
+/* Button margin helpers */
+.btn-mt-sm  { margin-top: 9px; }
+.btn-mt-lg  { margin-top: 16px; }
+
+/* Cart sheet top row */
+.sh-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+/* History page wrapper */
+.hist-wrap {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 18px 16px 100px;
+}
+
+/* History section heading */
+.section-title {
+  letter-spacing: 2px;
+  margin-bottom: 14px;
+}
 
 /* Location error box */
 .loc-err {
@@ -2133,7 +2281,33 @@ a {
 }
 
 /* Payment hint text */
+.pay-note {
+  font-size: .74rem;
+  color: var(--muted);
+  margin-top: 11px;
+  text-align: center;
+}
 
+/* Card with bottom margin (rating screen) */
+.card-mb { margin-bottom: 12px; }
+
+/* Kitchen stat colours */
+.ks-red    { color: var(--red); }
+.ks-orange { color: var(--orange); }
+.ks-green  { color: var(--green); }
+
+/* Admin purple badge */
+.b-purple {
+  background: var(--purple-bg);
+  color: var(--purple);
+  border: 1px solid rgba(171,71,188,.25);
+}
+
+/* Admin panels that start with top padding */
+.a-sec-top { padding-top: 14px; }
+
+/* Admin section title with no top margin */
+.a-sec-t-flush { margin-top: 0; }
 
 /*  Admin Login Screen */
 .auth-wrap  {

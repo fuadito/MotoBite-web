@@ -30,10 +30,12 @@ const DEMO_RIDERS = [];
 const MENU = {
 
     'Brand New':[
+        {id:108,  name:'Butterscotch Krusher',       price:350,  desc:'Chilled Butterscotch Krusher',                       img:'https://glovo.dhmedia.io/image/menus-glovo/products/208a7c15df177d20624c96f3f2f263a70701666b630c687f3292bf0c393dd45a?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1001, name:'Streetwise 9 Butter Chicken', price:1990, desc:'9 pcs Butter Chicken + chips', img:'https://glovo.dhmedia.io/image/menus-glovo/products/8114f8df70a749a6b666bce4d1e146e1a6f45e0026a3eb17a1c97b608fe768cd?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1002, name:'Mega Wing Box Chicken', price:790, desc:'Wings + Butter Chicken combo box',    img:'https://glovo.dhmedia.io/image/menus-glovo/products/e1f6b814dd2d1ee2c1397d014fd32aa3bccd0c030a8cb4159cefe776bd015577?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1003, name:'Dipping Box',      price:1990, desc:'6 Wings + 6 Strips + 12 Nuggets + Lrg chips + 3 dipping sauces',  img:'https://glovo.dhmedia.io/image/menus-glovo/products/41940fa143d81d7ae2daef32e43b7395dc289902db6458edc5fbf3ad9c2c3fcf?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:1004, name:'Dipping Box With 1,25l Soda', price:2200, desc:'6 Wings + 6 Strips + 12 Nuggets + Lrg chips + 1.25L soda + 3 dipping sauces', img:'https://glovo.dhmedia.io/image/menus-glovo/products/e63722651372325e893d134dfdebb451a2808b70a83110fa138f6a27b1599576?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
+        
     ],
 
     Streetwise:[
@@ -165,7 +167,7 @@ const MENU = {
   
   'Kiddie Meals':[
         {id:98,  name:'Kiddie Meal 1',  price:490,  desc:'6 Nuggets + Reg. chips + 350ml soda',      img:'https://glovo.dhmedia.io/image/menus-glovo/products/95395b9c31f3cf0e63a4a5cf5830eccc55fd46485612fb1aaf397636d815c7a1?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
-        {id:99,  name:'Kiddie Meal 2',  price:450,  desc:'1 pc Chicken + Reg. chips + 350ml soda',   img:'https://glovo.dhmedia.io/image/menus-glovo/products/52d98da6cffc9931be62ca6551d8b7b4f727b39eeeda36ba0000e4d5c104a1c4?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
+        {id:99,  name:'Kiddie Meal 2',  price:450,  desc:'1 pc Chicken + Reg. chips + 350ml soda',   img:'https://tb-static.uber.com/prod/image-proc/processed_images/63ff38faeb4d588210ebaa5b6fcb23fb/0fb376d1da56c05644450062d25c5c84.jpeg'},
         {id:100, name:'Kiddie Meal 3',  price:550,  desc:'20 Pops + Reg. chips + 350ml soda',        img:'https://glovo.dhmedia.io/image/menus-glovo/products/73ff0591c9e74c1d6ff2e8f44ee9cd8fa70d9bcf7d4aa8136c224579f23e8a11?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
   ]
 
@@ -385,9 +387,29 @@ function renderMenu(cat){
     const filtered=all.filter(i=>i.category===cat);
     const grouped={};
     filtered.forEach(i=>{ if(!grouped[i.category])grouped[i.category]=[]; grouped[i.category].push(i); });
+
+    const isBrandNew = cat === 'Brand New';
+
     document.getElementById('menu-list').innerHTML=Object.entries(grouped).map(([c,items],gi)=>`
     <div class="menu-sec-lbl">${c}</div>
-    ${items.map((item,ii)=>`
+        ${isBrandNew
+      ? `<div class="mi-grid">${items.map((item,ii)=>`
+          <div class="mi-card" style="animation-delay:${ii*.07}s" onclick="addToCart(${item.id})">
+            <div class="mi-card-img">
+              ${item.img
+                ? `<img src="${item.img}" alt="${item.name}" loading="lazy"/>`
+                : `<div class="mi-card-emoji">${F.emoji(c)}</div>`}
+            </div>
+            <div class="mi-card-body">
+              <div class="mi-card-name">${item.name}</div>
+              <div class="mi-card-desc">${item.desc || item.description || ''}</div>
+              <div class="mi-card-foot">
+                <div class="mi-card-price">${F.money(item.price)}</div>
+                <div class="mi-add">+</div>
+              </div>
+            </div>
+          </div>`).join('')}</div>`
+      : items.map((item,ii)=>`
         <div class="mi" style="animation-delay:${(gi*5+ii)*.045}s" onclick="addToCart(${item.id})">
         ${item.img
             ? `<div class="mi-img"><img src="${item.img}" alt="${item.name}" loading="lazy"/></div>`
