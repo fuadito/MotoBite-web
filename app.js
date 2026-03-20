@@ -53,7 +53,7 @@ const MENU = {
     ],
 
     Burgers:[
-        {id:14, name:'Zinger Burger',           price:650,  desc:'Spicy criscpy chicken burger',  img:'https://glovo.dhmedia.io/image/menus-glovo/products/224fecf2b8bd2cdcab6c80396562b2555e861344b526e3253b211f81a28228fa?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
+        {id:14, name:'Zinger Burger',           price:650,  desc:'Spicy crispy chicken burger',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/626d220b-717d-2ae1-ad61-952bf4ab693a.jpeg?a=0792b96a-c2b0-8bde-3490-714534582c64'},
         {id:15, name:'Zinger Burger Meal',      price:850,  desc:'Zinger Burger + Reg. chips + 500ml soda',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/542ce49a-9bfe-0bad-eb6e-4c141d98c397.jpeg?a=0efd49ab-e001-a8cf-94b1-f5b55b4686b0'},
         {id:16, name:'Crunch Burger',           price:470,   desc:'OR / Spicy Crunch chicken burger', img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/626d220b-717d-2ae1-ad61-952bf4ab693a.jpeg?a=0792b96a-c2b0-8bde-3490-714534582c64'},
         {id:17, name:'Crunch Burger Meal',      price:650,    desc:'Crunch Burger + Reg. chips + 500ml soda',  img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/0226c397-2a2a-2348-bdc6-9f8c6ad1bfd8.jpeg?a=9511d03b-b6f7-ea96-624b-dbaf285b601f'},
@@ -1472,27 +1472,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // Restore rider session
+  // Restore customer session — takes priority over rider
+  // (prevents leftover kfc_rider from testing hijacking the customer landing)
+  if(user.name && user.phone){
+    role = 'customer';
+    launchCustomer();
+    return;
+  }
+
+  // Restore rider session — only if no customer session exists
   const savedRider = localStorage.getItem('kfc_rider');
   if(savedRider){
     try{
       const rd = JSON.parse(savedRider);
       user.phone = rd.phone;
       const data = await apiFetch('/api/rider/login',{method:'POST',body:{phone:rd.phone}});
-      if(data && data.exists !== false){
+      // Only restore if rider is approved (has a name) — not pending/suspended
+      if(data && data.name && data.status === 'approved'){
         riderState = {...riderState, ...data, phone:rd.phone};
         role = 'rider';
         launchRider();
         return;
+      } else {
+        // Stale or invalid rider session — clear it
+        localStorage.removeItem('kfc_rider');
       }
-    }catch{}
-  }
-
-  // Restore customer session
-  if(user.name && user.phone){
-    role = 'customer';
-    launchCustomer();
-    return;
+    }catch{
+      localStorage.removeItem('kfc_rider');
+    }
   }
 
   // Check for existing Supabase admin session
