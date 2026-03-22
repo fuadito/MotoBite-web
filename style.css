@@ -1027,10 +1027,8 @@ a {
     bottom: 70px;
     left: 16px;
     right: 16px;
-    transform: translateX(-50%);
     z-index: 200;
     width: auto;
-    min-width: 472px;
     background: var(--red);
     color: var(--white);
     border-radius: 50px;
@@ -1038,13 +1036,13 @@ a {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: 0 4cap 20px rgba(0, 0, 0, .4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .4);
     cursor: pointer;
     transition: all var(--dur) var(--ease);
     border: none;
 }
 .cart-float:hover {
-    transform: translateX(-50%) translateY(-2px);
+    transform: translateY(-2px);
     box-shadow: 0 12px 50px rgba(0, 0, 0, .75);
 }
 .cf-l {
