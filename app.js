@@ -21,6 +21,10 @@ let pinBuf ='';
 let oTimer = null;
 let kOrders = [];
 let kDone = 0;
+let chatOrderId = null;
+let chatMyRole = null;
+let chatMsgs = [];
+let chatChannel = null;
 
 // DEMO DATA for admin and history fallback
 const DEMO_ORDERS_A = [];
@@ -46,7 +50,7 @@ const MENU = {
         {id:6,  name:'Streetwise 3',           price:690,   desc:'3pcs OR / SPICY + Reg. fries',                         img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/1185e73b-10f6-f5d6-a3ad-564ce2dc0c09.jpeg?a=a55ab509-2f77-bffb-5bc1-69e8381b26ea'},
         {id:7,  name:'Streetwise 3 with Rice', price:690,   desc:'3pcs OR / SPICY + Colonel Rice',                       img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/9ba70c82-600c-68f5-96bd-5ad7f6a784d2.jpeg?a=8cbc68dc-2d6e-8089-0b7a-ecbfd636dd97'},
         {id:8,  name:'Streetwise 3 Crunch',    price:650,   desc:'3 pcs Original Recipe + Tortilla chips',               img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/3acb77db-7590-9f73-63cd-5474b569c4d2.jpeg?a=0f0aab3c-3ce6-63cb-3b88-24f51b1b6b84'},
-        {id:4,  name:'Streetwise 2 Large',     price:590,   desc:'2pcs OR / SPICY + Lrg. fries',                         img:'https://tb-static.uber.com/prod/image-proc/processed_images/e9d15641a61989948c926ea5419f5bab/a19bb09692310dfd41e49a96c424b3a6.jpeg'},
+        {id:4,  name:'Streetwise 2 Large',     price:590,   desc:'2pcs OR / SPICY + Lrg. fries',                         img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/37fd6de8-12ad-4016-ab2e-ef3e491f4ee8.jpeg?a=2f70c603-e474-d115-c163-cf23286fc21b'},
         {id:106, name:'Streetwise 2 Meal',     price:590,   desc:'2 pcs, regular chips and 350ml soda',                  img:'https://glovo.dhmedia.io/image/menus-glovo/products/0d2663b6946a51471ff5433aa4d04241ff61d96be5e090351985c24c04c6f03e?t=W3sicmVzaXplIjp7Im1vZGUiOiJmaXQiLCJ3aWR0aCI6MzIwLCJoZWlnaHQiOjMyMH19XQ=='},
         {id:3,  name:'Streetwise 2',           price:490,   desc:'2pcs OR / SPICY + Colonel Rice or Reg. fries',         img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/37fd6de8-12ad-4016-ab2e-ef3e491f4ee8.jpeg?a=2f70c603-e474-d115-c163-cf23286fc21b'},
         {id:5,  name:'Streetwise 2 Crunch',    price:450,   desc:'2pcs OR / SPICY + Tortilla chips',                     img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/9f60ca25-162c-5872-e514-93615c9430a8.jpeg?a=2875a9d0-f24e-9f95-0c02-05772acc77ff'},
@@ -117,11 +121,16 @@ const MENU = {
         {id:62, name:'Pops Large',                   price:690,  desc:'Large pops chicken',                               img:'https://cdn.tictuk.com/059c6a06-ad71-1fee-63b6-c78d1dabb058/ce800dca-2e6a-0406-6390-f8c36845e986.jpeg?a=1cf94994-4520-bb51-8592-1b80afd74a3d'},
     ],
 
+    Chicken:[
+        {id:66,  name:'1 Piece Chicken',  price:290,   desc:'1 pc Original Recipe chicken',      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/b39c8366-4b64-1efe-a197-3971fec1e7a0.jpeg?a=bc67e266-237e-54cc-4c95-f096e62121a7'},
+        {id:109, name:'5 Piece Chicken',  price:1150,  desc:'5 pcs Original Recipe chicken',     img:'https://tb-static.uber.com/prod/image-proc/processed_images/6ce81e0f8f2152707ba6dbca3ceef101/c67fc65e9b4e16a553eb7574fba090f1.jpeg'},
+        {id:110, name:'7 Piece Chicken',  price:1500,  desc:'7 pcs Original Recipe chicken',     img:'https://tb-static.uber.com/prod/image-proc/processed_images/2fcd6b470fe4b7cf2291331326ca0320/a19bb09692310dfd41e49a96c424b3a6.jpeg'},
+    ],
+
     'Snacks & Sides':[
         {id:63, name:'3 Crispy Fillets',             price:490,  desc:'3 crispy chicken fillets + 1 dip',                   img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/0be83174-5ee6-7047-05f2-8d253e3a9b2b.jpeg?a=f0d9993f-f043-34a4-eb7f-ea2ab9f69d63'},
         {id:64, name:'6 Crispy Fillets',             price:890,  desc:'6 crispy chicken fillets',                           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/2c198a58-d809-9673-cb4c-ecb01bbb2c6c.jpeg?a=cd8243fc-7de8-21f0-5f74-bf77f9c00783'},
         {id:65, name:'Crispy Strips Meal',           price:790,  desc:'3 Crispy Strips + Dip + Reg. chips + 500ml drink',  img:'https://cdn.tictuk.com/051a03c6-fbab-ee7d-18b0-a92132fba348/ad75c67d-1323-6d29-569f-d55a2c5f9dbb.jpeg?a=282ddf1d-443f-b864-de8f-f5e6a8c8ad04'},
-        {id:66, name:'1 Piece Chicken',              price:290,  desc:'1 pc Original Recipe chicken',                       img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/b39c8366-4b64-1efe-a197-3971fec1e7a0.jpeg?a=bc67e266-237e-54cc-4c95-f096e62121a7'},
         {id:67, name:'Regular Chips',                price:290,  desc:'Regular crispy KFC chips',                           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/4aa1f88d-0e1b-f7d0-424b-94400802bf87.jpeg?a=bc67e266-237e-54cc-4c95-f096e62121a7'},
         {id:68, name:'Large Chips',                  price:290,  desc:'Large portion crispy chips',                         img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/4f7f0a4a-4159-7c62-35f6-1b2220b6167b.jpeg?a=c1974a1a-10e6-e981-ab6c-79ceb536ade5'},
         {id:69, name:'Family Chips',                 price:590,  desc:'Family size crispy chips',                           img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/0838ced2-9f6c-1380-bc7e-b73894eb68dd.jpeg?a=bbffd18d-2738-770b-4b5c-d56f10b6dcf3'},
@@ -222,7 +231,7 @@ const F = {
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
     status: s=>({pending:'Awaiting payment',paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
     badge: s=>({pending:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
-    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
+    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗',Chicken:'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
 };
 
 function screen(id){
@@ -333,7 +342,9 @@ function goLanding(){
     screen('s-landing');
 }
 function exitRole(){
-     role=null; cart=[]; screen('s-landing');
+     role=null; cart=[]; 
+     localStorage.removeItem('kfc_kitchen');
+     screen('s-landing');
 }
 
 //CUSTOMER APP
@@ -451,6 +462,7 @@ function needsChickenChoice(item) {
   if (name.includes('nyama nyama'))      return true;
   if (name.includes('box master'))       return true;
   if (name.includes('crunch master'))    return true;
+  if (name.includes('chicken')) return true;
 
   return false;
 }
@@ -564,14 +576,71 @@ function closeChickenPicker(){
 }
 
 
+// Returns available add-ons for a cart item based on its name
+function getAddOns(item) {
+  const name = (item.name || '').toLowerCase();
+  const addOns = [];
+
+  // ── Dunk It — Streetwise 2, 3 and 5 only ────────────────────────────────
+  if (['streetwise 2','streetwise 2 large','streetwise 2 meal','streetwise 2 crunch'].includes(name))
+    addOns.push({ key:'dunk', label:'Dunk It (2 pcs)', price:150});
+  if (['streetwise 3','streetwise 3 with rice','streetwise 3 meal','streetwise 3 crunch'].includes(name))
+    addOns.push({ key:'dunk', label:'Dunk It (3 pcs)', price:170});
+  if (['streetwise 5','streetwise 5 crunch'].includes(name))
+    addOns.push({ key:'dunk', label:'Dunk It (5 pcs)', price:290});
+
+  // ── Upsize chips ──────────────────────────────────────────────────────────
+  // Regular → Large (+120): Streetwise 1, 2, 3 variants (not crunch, not 5/7)
+  if (name.includes('streetwise') && !name.includes('crunch') &&
+      !name.includes('streetwise 5') && !name.includes('streetwise 7'))
+    addOns.push({ key:'upsize_lg', label:'Upsize to Large Chips +120', price:120,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/4f7f0a4a-4159-7c62-35f6-1b2220b6167b.jpeg?a=c1974a1a-10e6-e981-ab6c-79ceb536ade5' });
+  // Large → Family (+220): Streetwise 5 only (7 already has family chips)
+  if (name.includes('streetwise 5') && !name.includes('crunch'))
+    addOns.push({ key:'upsize_fam', label:'Upsize to Family Chips +220', price:220,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/0838ced2-9f6c-1380-bc7e-b73894eb68dd.jpeg?a=bbffd18d-2738-770b-4b5c-d56f10b6dcf3' });
+
+  // ── Salad — all Streetwise items ─────────────────────────────────────────
+  if (name.includes('streetwise')) {
+    addOns.push({ key:'salad_sm',  label:'Add Salad Small',   price:100,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/aed04276-4842-6e92-7d13-3b7521fed2b7.jpeg?a=95b7ba3d-4556-563a-1d93-d6562905f61b' });
+    addOns.push({ key:'salad_reg', label:'Add Salad Regular', price:270,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/aed04276-4842-6e92-7d13-3b7521fed2b7.jpeg?a=95b7ba3d-4556-563a-1d93-d6562905f61b' });
+    addOns.push({ key:'salad_lg',  label:'Add Salad Large',   price:350,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/aed04276-4842-6e92-7d13-3b7521fed2b7.jpeg?a=95b7ba3d-4556-563a-1d93-d6562905f61b' });
+  }
+
+  // ── Small Coleslaw — Burgers only (not lunchbox) ──────────────────────────
+  if (name.includes('burger') && !name.includes('lunchbox'))
+    addOns.push({ key:'coleslaw_sm', label:'Add Coleslaw Small', price:100,
+      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/aed04276-4842-6e92-7d13-3b7521fed2b7.jpeg?a=95b7ba3d-4556-563a-1d93-d6562905f61b' });
+
+  return addOns;
+}
+
+function toggleAddOn(cartIdx, key, price, label) {
+  if(!cart[cartIdx].addOns) cart[cartIdx].addOns = {};
+  if(cart[cartIdx].addOns[key]) {
+    delete cart[cartIdx].addOns[key];
+  } else {
+    cart[cartIdx].addOns[key] = {label, price};
+  }
+  renderCartSheet();
+  updateCartUI();
+}
+
 function updateCartUI(){
-    const count=cart.length, total=cart.reduce((s,i)=>s+i.price,0);
+    const count=cart.length;
+    const total=cart.reduce((s,item)=>{
+      const addOnTotal = Object.values(item.addOns||{}).reduce((a,x)=>a+x.price,0);
+      return s + item.price + addOnTotal;
+    },0);
     const fl=document.getElementById('cart-float');
-    if(count>0){ // shows cart button if there's atleast 1 item
-      fl.classList.remove('hidden'); //makes the cart btn visible
-      document.getElementById('cf-cnt').textContent=count; //updates the red circle badge on the cart btn with the item count
-      document.getElementById('cf-p').textContent=F.money(total); // updates the price shown on the cart btn, in KSH
-    } else { fl.classList.add('hidden'); } //if cart is empty, hide the btn completely
+    if(count>0){
+      fl.classList.remove('hidden');
+      document.getElementById('cf-cnt').textContent=count;
+      document.getElementById('cf-p').textContent=F.money(total);
+    } else { fl.classList.add('hidden'); }
 }
 
 function openCart(){ renderCartSheet(); 
@@ -589,18 +658,38 @@ function renderCartSheet(){
     li.innerHTML='<div class="empty"><div class="ei">🛒</div><h3>CART IS EMPTY</h3><p>Add items from the menu</p></div>';
     su.innerHTML=ac.innerHTML=''; return;
   }
-  li.innerHTML=cart.map((item,i)=>`
+  li.innerHTML=cart.map((item,i)=>{
+    const addOns = getAddOns(item);
+    const selected = item.addOns || {};
+    const addOnHTML = addOns.length ? `
+      <div style="margin:7px 0 4px;display:flex;flex-direction:column;gap:6px">
+        ${addOns.map(a=>`
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--dark3);border-radius:8px;padding:6px 8px;border:1.5px solid ${selected[a.key]?'var(--red)':'var(--line)'}">
+            <img src="${a.img}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;flex-shrink:0"/>
+            <span style="flex:1;font-size:.78rem;color:var(--white)">${a.label} <strong style="color:var(--red)">+${F.money(a.price)}</strong></span>
+            <input type="checkbox" ${selected[a.key]?'checked':''}
+              onchange="toggleAddOn(${i},'${a.key}',${a.price},'${a.label}')"
+              style="accent-color:var(--red);width:16px;height:16px;cursor:pointer;flex-shrink:0"/>
+          </label>`).join('')}
+      </div>` : '';
+    return `
     <div class="ci">
       <div class="ci-info">
         <div class="ci-name">${item.name}${item.chickenType?` <span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.5px;vertical-align:middle">${item.chickenType}</span>`:''}</div>
+        ${addOnHTML}
         <input class="note-inp" placeholder="Special note (e.g. no onions)..." value="${item.note||''}" oninput="cart[${i}].note=this.value"/>
       </div>
       <div class="ci-r">
-        <div class="ci-price">${F.money(item.price)}</div>
+        <div class="ci-price">${F.money(item.price + Object.values(selected).reduce((s,a)=>s+a.price,0))}</div>
         <button class="ci-rm" onclick="removeCartItem(${i})">✕</button>
       </div>
-    </div>`).join('');
-  const total=cart.reduce((s,i)=>s+i.price,0);
+    </div>`;
+  }).join('');
+
+  const total = cart.reduce((s,item)=>{
+    return s + item.price + Object.values(item.addOns||{}).reduce((a,x)=>a+x.price,0);
+  },0);
+
   su.innerHTML=`<div class="cart-sum">
     <div class="srow"><span>Food subtotal</span><span>${F.money(total)}</span></div>
     <div class="srow">
@@ -669,8 +758,15 @@ async function initPay() {
   const btn=document.getElementById('pay-btn');
   btn.innerHTML='<span class="spin"></span> Placing order...'; btn.disabled=true;
   const total=cart.reduce((s,i)=>s+i.price,0);
-  const notes=cart.filter(i=>i.note||i.chickenType).map(i=>`${i.name}${i.chickenType?' ['+i.chickenType+']':''}: ${i.note||''}`).join('; ');
-  const order=await apiFetch('/api/orders',{method:'POST',body:{items:cart,notes,location:userLoc}});
+  const notes=cart.filter(i=>i.note||i.chickenType||Object.keys(i.addOns||{}).length).map(i=>{
+    const addOnStr = Object.values(i.addOns||{}).map(a=>a.label).join(', ');
+    return `${i.name}${i.chickenType?' ['+i.chickenType+']':''}${addOnStr?' + '+addOnStr:''}: ${i.note||''}`;
+  }).join('; ');
+  const orderItems = cart.map(item => ({
+    ...item,
+    price: item.price + Object.values(item.addOns||{}).reduce((s,a)=>s+a.price,0)
+  }));
+  const order=await apiFetch('/api/orders',{method:'POST',body:{items:orderItems,notes,location:userLoc}});
 
   // If order creation failed — stop here, show error, let customer try again
   if(!order?.id){
@@ -773,7 +869,7 @@ function setRating(type,val){
 // async used to communicate with backed to await API-fetch
 async function submitRating(){
     if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; } //checks that both ratings have been set. foodR & riderR starts with 0, !foodR-if foodR = 0,(not yet rated). if either missing show an error, "return" stops the function, nothing submitted until both rated. 
-    await apiFetch(`/api/orders/${activeOId}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}}); //sends both ratings to backend against the specific order ID. stored in supabase, foodR goes to restaurant, riderR goes to rider's profile. await means the function pause until backend responds before moving to next line.
+    await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}}); //sends both ratings to backend against the specific order ID. stored in supabase, foodR goes to restaurant, riderR goes to rider's profile. await means the function pause until backend responds before moving to next line.
     const rc=document.getElementById('rating-card');
     if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
   toast('Rating submitted! Thank you 🙏','ok');
@@ -1471,6 +1567,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if(urlRole === 'admin'){
     screen('s-admin-login');
+    return;
+  }
+  if(urlRole === 'rider'){
+    screen('s-rider-login');
     return;
   }
 
