@@ -1292,6 +1292,7 @@ function launchKitchen(){
   startClock();
   kOrders=[];
   if(kInterval) clearInterval(kInterval);
+  pollKitchen();
   kInterval=setInterval(pollKitchen,8000); // It runs automatically every 8 seconds so the kitchen board remains fresh, no need to manually refresh
 }
 
@@ -1337,6 +1338,9 @@ function kCard(o,type){   //Builds a single order card for the kitchen board (or
      <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
     <div class="kc-area">📍 ${o.customer_area||'Narok'}</div>
+    ${o.mpesa_reference
+      ? `<div style="font-size:.72rem;color:var(--green);font-weight:600;margin-top:4px">💳 ${o.mpesa_reference}</div>`
+      : '<div style="font-size:.72rem;color:var(--orange);margin-top:4px">⏳ Awaiting payment proof</div>'}
     <div class="kc-acts">${action}</div>
   </div>`;
 }
@@ -1581,7 +1585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   if(urlRole === 'rider'){
-    screen('s-rider-login');
+    selectRole('rider');
     return;
   }
 
@@ -1661,6 +1665,7 @@ async function adminLogin() {
 // Admin sign out
 async function adminSignOut() {
     await supa.auth.signOut();
+    if(window._adminInterval) clearInterval(window._adminInterval);
     role = null;
     screen('s-landing');
     toast('signed out');
