@@ -121,7 +121,7 @@ const MENU = {
         {id:62, name:'Pops Large',                   price:690,  desc:'Large pops chicken',                               img:'https://cdn.tictuk.com/059c6a06-ad71-1fee-63b6-c78d1dabb058/ce800dca-2e6a-0406-6390-f8c36845e986.jpeg?a=1cf94994-4520-bb51-8592-1b80afd74a3d'},
     ],
 
-    Chicken:[
+    'Chicken Pieces':[
         {id:66,  name:'1 Piece Chicken',  price:290,   desc:'1 pc Original Recipe chicken',      img:'https://cdn.tictuk.com/174eef87-5a5a-dc2e-edbf-611f0131dfe8/b39c8366-4b64-1efe-a197-3971fec1e7a0.jpeg?a=bc67e266-237e-54cc-4c95-f096e62121a7'},
         {id:109, name:'5 Piece Chicken',  price:1150,  desc:'5 pcs Original Recipe chicken',     img:'https://tb-static.uber.com/prod/image-proc/processed_images/6ce81e0f8f2152707ba6dbca3ceef101/c67fc65e9b4e16a553eb7574fba090f1.jpeg'},
         {id:110, name:'7 Piece Chicken',  price:1500,  desc:'7 pcs Original Recipe chicken',     img:'https://tb-static.uber.com/prod/image-proc/processed_images/2fcd6b470fe4b7cf2291331326ca0320/a19bb09692310dfd41e49a96c424b3a6.jpeg'},
@@ -231,7 +231,7 @@ const F = {
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
     status: s=>({pending:'Awaiting payment',paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
     badge: s=>({pending:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
-    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗',Chicken:'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
+    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗','Chicken Pieces':'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
 };
 
 function screen(id){
