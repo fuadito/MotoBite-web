@@ -25,6 +25,7 @@ let chatOrderId = null;
 let chatMyRole = null;
 let chatMsgs = [];
 let chatChannel = null;
+let _catObserver = null;
 
 // DEMO DATA for admin and history fallback
 const DEMO_ORDERS_A = [];
@@ -391,15 +392,43 @@ function renderCats(){
     document.getElementById('cat-bar').innerHTML=cats.map(c=>`<button class="cat-btn${c===curCat?' on':''}" onclick="filterCat('${c}')">${c}</button>`).join('');
 }
 
-function filterCat(cat){ curCat=cat; renderCats(); renderMenu(cat); }
+function filterCat(cat){ 
+  curCat=cat; 
+  renderCats(); 
+  const section = document.querySelector('.menu-sec-lbl[data-cat="' + cat + '"]');
+  if(section){
+    section.scrollIntoView({behavior:'smooth', block:'start'});
+  } else {
+    renderMenu()
+  }
+}
 
-function renderMenu(cat){
-    const all=Object.entries(MENU).flatMap(([c,items])=>items.map(i=>({...i,category:c})));
-    const filtered=all.filter(i=>i.category===cat);
-    const grouped={};
-    filtered.forEach(i=>{ if(!grouped[i.category])grouped[i.category]=[]; grouped[i.category].push(i); });
-    document.getElementById('menu-list').innerHTML=Object.entries(grouped).map(([c,items])=>`
-    <div class="menu-sec-lbl">${c}</div>
+function initCategoryScroll(){
+  if(_catObserver){_catObserver.disconnect(); _catObserver = null; }
+
+  _catObserver = new IntersectionObserver((entries) => {
+    const visible = entries
+    .filter(e => e.isIntersecting)
+    .sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if(!visible.length) return;
+    const cat = visible[0].target.dataset.cat;
+    if(cat && cat !== curCat){
+      curCat = cat;
+      renderCats();
+      const activeBtn = document.querySelector('.cat-btn.on');
+      if(activeBtn) activeBtn.scrollIntoView({behavior:'smooth', block:'nearest', inline:'center'});
+    }
+  }, {
+    threshold: 0.1,
+    rootMargin: '-20% 0px -60% 0px'
+  });
+  document.querySelectorAll('.menu-sec-lbl[data-cat]').forEach(el => _catObserver.observe(el));
+}
+
+function renderMenu(){
+  const allCats = Object.entries(MENU);
+    document.getElementById('menu-list').innerHTML=allCats.map(([c,items])=>`
+    <div class="menu-sec-lbl" data-cat="${c}">${c}</div>
     <div class="mi-grid">${items.map((item,ii)=>`
         <div class="mi-card" style="animation-delay:${ii*.07}s" onclick="addToCart(${item.id})">
           <div class="mi-card-img">
@@ -417,7 +446,10 @@ function renderMenu(cat){
           </div>
         </div>`).join('')}</div>
     `).join('');
+    setTimeout(initCategoryScroll, 150);
+
 }
+
 
 
 
