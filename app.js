@@ -1,4 +1,3 @@
-
 // CONFIG
 const API = window.location.hostname === 'localhost'
 ? 'http://localhost:3000'
@@ -187,15 +186,27 @@ function ago(mins){ return new Date(Date.now()-mins*60000).toISOString();}
 
 //API HELPER
 async function apiFetch(path, opts={}) {
-    try {
-        const r = await fetch(API+path, {
-            headers:{'Content-Type':'application/json','x-user-phone':user.phone,...(opts.headers||{})},
-            ...opts, body:opts.body?JSON.stringify(opts.body):undefined
-        });
-        if(!r.ok) throw new Error(r.status);
-        return r.json();
-    } catch { return null;}
-    
+  // Get Supabase token from localStorage
+  const supaToken = localStorage.getItem('sb-cylzuyhdnuvmhfjudsmf-auth-token');
+  let token = '';
+  try {
+    token = supaToken ? JSON.parse(supaToken).access_token : '';
+  } catch {}
+  
+  try {
+    const r = await fetch(API+path, {
+      headers: {
+        'Content-Type':'application/json',
+        'x-user-phone':user.phone,
+        'Authorization': 'Bearer ' + token,  // Add this line
+        ...(opts.headers||{})
+      },
+      ...opts, 
+      body:opts.body?JSON.stringify(opts.body):undefined
+    });
+    if(!r.ok) throw new Error(r.status);
+    return r.json();
+  } catch { return null;}
 }
 
 // TOAST
@@ -230,8 +241,8 @@ const F = {
     phone: p=>{ const l=p.startsWith('254')?'0'+p.slice(3):p; return l.replace(/(\d{4})(\d{3})(\d{3})/,'$1 $2 $3'); },
     norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?d:d.startsWith('0')?'254'+d.slice(1):'254'+d; },
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
-    status: s=>({pending:'Awaiting payment',paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
-    badge: s=>({pending:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
+    status: s=>({pending:'Awaiting payment',awaiting_payment:'Awaiting payment', paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
+    badge: s=>({pending:'b-muted', awaiting_payment:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
     emoji: c=>({'Brand New':'🔥',Streetwise:'🍗','Chicken Pieces':'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
 };
 
@@ -248,14 +259,36 @@ function selectRole(r){
     kitchen: { icon:'👨‍🍳',title:'KITCHEN', sub:'Enter the kitchen passcode to view the order board.', fields:'code'},
     admin:   { icon:'⚙️', title:'ADMIN',   sub:'Enter your admin passcode to access the dashboard.', fields:'code'}, 
     }[r];
-    if(r=== 'admin'){role='admin'; screen('s-admin-login'); return;}
-    document.getElementById('ai').textContent=cfg.icon;
-    document.getElementById('at').textContent=cfg.title;
-    document.getElementById('as').textContent=cfg.sub;
-    document.getElementById('af').innerHTML=buildFields(cfg.fields);
-    screen('s-auth');
-    setTimeout(()=>document.querySelector('#af input')?.focus(),100);
-
+    // Rider, Kitchen, Admin - go directly to auth
+    if(r === 'rider' || r === 'kitchen' || r === 'admin'){
+        document.getElementById('ai').textContent=cfg.icon;
+        document.getElementById('at').textContent=cfg.title;
+        document.getElementById('as').textContent=cfg.sub;
+        document.getElementById('af').innerHTML=buildFields(cfg.fields);
+        screen('s-auth');
+        setTimeout(()=>document.querySelector('#af input')?.focus(),100);
+        enableEnterKey('auth-btn');
+        return;
+    }
+     // CUSTOMER - show Sign In / Register options
+ if(r === 'customer'){
+   document.getElementById('ai').textContent=cfg.icon;
+   document.getElementById('at').textContent='WELCOME';
+   document.getElementById('as').textContent='Sign in to your account or create a new one';
+   document.getElementById('af').innerHTML=`
+     <div class="auth-options">
+       <button class="btn btn-primary btn-full btn-lg" onclick="showCustomerLogin()">Sign In</button>
+       <button class="btn btn-ghost btn-full" style="margin-top:12px; background:var(--dark2); border:2px solid var(--line2" onclick="showCustomerRegister()">Create Account</button>
+     </div>
+   `;
+   screen('s-auth');
+   // Hide the Continue button on this screen
+  const contBtn = document.getElementById('auth-btn');
+  if(contBtn) contBtn.style.display = 'none';
+   enableEnterKey('auth-btn');
+   return;
+ }
+    
     setTimeout(() => {
     const saved = localStorage.getItem('kfc_user');
     if(saved){
@@ -293,47 +326,206 @@ function buildFields(type){
   return `<div class="field"><label class="field-lbl">Passcode</label><input class="inp" id="f-code" type="password" placeholder="Enter passcode" autocomplete="off"/></div>`;
 }
 
+function showCustomerLogin(){
+  document.getElementById('at').textContent='SIGN IN';
+  document.getElementById('as').textContent='Enter your phone number';
+  document.getElementById('af').innerHTML=buildFields('phone');
+  const contBtn = document.getElementById('auth-btn');
+  if(contBtn) { contBtn.style.display = 'block'; contBtn.textContent = 'Continue →'; }
+  setTimeout(()=>document.querySelector('#af input')?.focus(),100);
+  enableEnterKey('auth-btn');
+}
+
+function showCustomerRegister(){
+  document.getElementById('at').textContent='CREATE ACCOUNT';
+  document.getElementById('as').textContent='Enter your details to get started';
+  document.getElementById('af').innerHTML=buildFields('name+phone');
+    const contBtn = document.getElementById('auth-btn');
+  if(contBtn) { contBtn.style.display = 'block'; contBtn.textContent = 'Create Account →'; }
+  setTimeout(()=>document.querySelector('#af input')?.focus(),100);
+  enableEnterKey('auth-btn');
+}
+
+// ── OTP VERIFICATION ──────────────────────────────────────────────────────────
+// Called after phone number is validated — sends OTP and shows the verify screen.
+// onSuccess is called once the code is confirmed.
+
+async function sendOtpAndVerify(phone, onSuccess) {
+  document.getElementById('at').textContent = 'VERIFY PHONE';
+  document.getElementById('as').textContent = `Enter the 6-digit code sent to +254${phone.slice(3)}`;
+  document.getElementById('af').innerHTML = `
+    <div class="field">
+      <label class="field-lbl">Verification Code</label>
+      <input class="inp" id="f-otp" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"/>
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);margin-top:6px">
+      Didn't receive it? <span style="color:var(--red);cursor:pointer" onclick="resendOtp('${phone}')">Resend</span>
+    </div>
+  `;
+  const contBtn = document.getElementById('auth-btn');
+  if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Verify →'; contBtn.disabled=false; contBtn.innerHTML='Verify →'; }
+
+  const res = await apiFetch('/api/auth/send-otp', { method:'POST', body:{ phone } });
+  if(!res?.success){
+    toast('Could not send verification code. Try again.','err');
+    return;
+  }
+  toast('Code sent! Check your SMS 📱','ok');
+
+  window._otpPhone   = phone;
+  window._otpSuccess = onSuccess;
+  window._otpMode    = true;
+
+  setTimeout(()=>document.getElementById('f-otp')?.focus(), 100);
+  enableEnterKey('auth-btn');
+}
+
+async function resendOtp(phone){
+  const res = await apiFetch('/api/auth/send-otp', { method:'POST', body:{ phone } });
+  if(res?.success) toast('New code sent 📱','ok');
+  else toast('Could not resend. Try again.','err');
+}
+
+async function verifyOtp() {
+  const pin = document.getElementById('f-otp')?.value.trim();
+  const btn = document.getElementById('auth-btn');
+  if(!pin || pin.length < 6){ toast('Enter the 6-digit code','err'); return; }
+
+  btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
+
+  const res = await apiFetch('/api/auth/verify-otp', { method:'POST', body:{ phone: window._otpPhone, pin } });
+
+  btn.innerHTML='Verify →'; btn.disabled=false;
+
+  if(!res?.success){
+    toast('Wrong code — check your SMS and try again','err');
+    document.getElementById('f-otp').value='';
+    document.getElementById('f-otp').focus();
+    return;
+  }
+
+  const cb = window._otpSuccess;
+  const verifiedPhone = window._otpPhone;
+  window._otpPhone   = null;
+  window._otpSuccess = null;
+  window._otpMode    = false;
+  cb(verifiedPhone);
+}
+
 async function authSubmit() {
     const btn=document.getElementById('auth-btn');
+
+    // If we're in OTP verification mode, route to verifyOtp instead
+    if(window._otpMode){ verifyOtp(); return; }
+
     btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
     const reset =()=>{ btn.innerHTML='Continue →'; btn.disabled=false; };
 
-    if(role==='customer'){
-        const name=document.getElementById('f-name')?.value.trim();
-        const raw =document.getElementById('f-phone')?.value.trim();
-        if(!name||name.length<2){ toast('Enter your full name','err'); return reset(); }
-        if(!raw||raw.replace(/\D/g,'').length<9){ toast('Enter a valid phone number','err'); return reset(); }
-        user={name, phone:F.norm(raw)};
-        const isReturning=!!localStorage.getItem('kfc_user');
-        localStorage.setItem('kfc_user',JSON.stringify(user));
-        toast(isReturning?`Welcome back, ${name}! 👋`:`Welcome, ${name}! 🍗`,'ok');
-        await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name}});
-        reset(); launchCustomer();
-      }
+   if(role==='customer'){
+ const nameInput = document.getElementById('f-name');
+ const phoneInput = document.getElementById('f-phone');
+ const raw = phoneInput?.value.trim();
+
+ if(!raw||raw.replace(/\D/g,'').length<9){
+   toast('Enter a valid phone number','err');
+   return reset();
+ }
+
+ if(!nameInput){
+   const saved = localStorage.getItem('kfc_user');
+   if(!saved){
+     toast('No account found. Tap "Create Account" to sign up.','err');
+     return reset();
+   }
+   try {
+     const u = JSON.parse(saved);
+     const normalized = F.norm(raw);
+     if(u.phone !== normalized){
+       toast('Phone number not recognized.','err');
+       return reset();
+     }
+     user = { name: u.name, phone: normalized };
+   } catch {
+     toast('No account found. Create one first.','err');
+     return reset();
+   }
+ } else {
+   const name = nameInput.value.trim();
+   if(!name||name.length<2){
+     toast('Enter your full name','err');
+     return reset();
+   }
+   user = { name, phone: F.norm(raw) };
+ }
+
+ btn.innerHTML='Continue →'; btn.disabled=false;
+
+ // Send OTP — proceed to launchCustomer only after verified
+ sendOtpAndVerify(user.phone, async () => {
+   const isReturning = !!localStorage.getItem('kfc_user');
+   localStorage.setItem('kfc_user', JSON.stringify(user));
+   toast(isReturning ? `Welcome back, ${user.name}! 👋` : `Account created! Welcome, ${user.name}! 🍗`,'ok');
+   await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
+   const otpRes = await apiFetch('/api/auth/send-otp', {method:'POST', body:{phone:user.phone}});
+   if(!otpRes?.success){ toast('Could not send verification code','err'); return reset(); }
+   launchCustomer();
+ });
+ return;
+}
+
      else if(role==='rider'){
  const raw=document.getElementById('f-phone')?.value.trim();
         if(!raw||raw.replace(/\D/g,'').length<9){ toast('Enter a valid phone number','err'); return reset(); }
         user.phone=F.norm(raw);
-        const data=await apiFetch('/api/rider/login',{method:'POST',body:{phone:user.phone}});
-        if(data){ riderState={...riderState,...data,phone:user.phone}; }
-        else { riderState.phone=user.phone; }
-        const isReturning=!!localStorage.getItem('kfc_rider');
-        localStorage.setItem('kfc_rider',JSON.stringify({phone:user.phone}));
-        toast(isReturning?`Welcome back! 🏍️`:`Welcome, Rider! 🏍️`,'ok');
-        reset(); launchRider();
+
+        btn.innerHTML='Continue →'; btn.disabled=false;
+
+        // Send OTP — proceed to launchRider only after verified
+        sendOtpAndVerify(user.phone, async () => {
+          const data=await apiFetch('/api/rider/login',{method:'POST',body:{phone:user.phone}});
+          // FIX: handle unregistered rider — backend returns { exists: false }
+          if(data?.exists === false){
+            toast('No rider account found for this number. Please register first.','err',7000);
+            screen('s-landing');
+            return;
+          }
+          // Block pending/suspended riders before launching dashboard
+          if(!data || data.error){
+            const msg = data?.error || 'Login failed. Contact KFC Narok.';
+            toast(msg,'err',6000);
+            screen('s-landing');
+            return;
+          }
+          if(data.status === 'pending'){
+            toast('Your application is under review. You will be notified within 24 hours.','warn',8000);
+            screen('s-landing');
+            return;
+          }
+          if(data.status === 'suspended'){
+            toast('Your account has been suspended. Contact KFC Narok.','err',8000);
+            screen('s-landing');
+            return;
+          }
+          riderState={...riderState,...data,phone:user.phone};
+          const isReturning=!!localStorage.getItem('kfc_rider');
+          localStorage.setItem('kfc_rider',JSON.stringify({phone:user.phone}));
+          toast(isReturning?`Welcome back! 🏍️`:`Welcome, Rider! 🏍️`,'ok');
+          launchRider();
+        });
+        return;
 
   } else if(role==='kitchen'){
     const code=document.getElementById('f-code')?.value.trim();
     if(!code){ toast('Enter the kitchen passcode','err'); return reset(); }
     const r=await apiFetch('/api/kitchen/verify',{method:'POST',body:{code}});
     if(!r?.ok){ toast('Wrong passcode — ask your manager','err'); return reset(); }
-    localStorage.setItem('kfc_kitchen','1'); // save session
+    localStorage.setItem('kfc_kitchen','1');
     reset(); launchKitchen();
 
   } else if(role==='admin'){
     const code=document.getElementById('f-code')?.value.trim();
     reset(); launchAdmin();
-  } 
+  }
 }
 
 
@@ -343,9 +535,13 @@ function goLanding(){
     screen('s-landing');
 }
 function exitRole(){
-     role=null; cart=[]; 
-     localStorage.removeItem('kfc_kitchen');
-     screen('s-landing');
+  role=null; cart=[]; active0Id=null; foodR=0; riderR=0;
+  kDone=0; kOrders=[];
+  if(kInterval){ clearInterval(kInterval); kInterval=null; }
+  if(_locInterval){ clearInterval(_locInterval); _locInterval=null; }
+  riderState={name:'',phone:'',rating:0,deliveries:0,online:false,regStep:0,regData:{},activeOrder:null,collected:false,todayTrips:0,todayEarnings:0};
+  localStorage.removeItem('kfc_kitchen');
+  screen('s-landing');
 }
 
 //CUSTOMER APP
@@ -404,23 +600,23 @@ function filterCat(cat){
 }
 
 function initCategoryScroll(){
-  if(_catObserver){_catObserver.disconnect(); _catObserver = null; }
+  if(_catObserver){_catObserver.disconnect(); _catObserver = null; } // prevents duplicate observers
 
-  _catObserver = new IntersectionObserver((entries) => {
-    const visible = entries
+  _catObserver = new IntersectionObserver((entries) => { // watches which cat sections are visible on screen
+    const visible = entries // keeps only sections currently visible in viewport
     .filter(e => e.isIntersecting)
-    .sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    .sort((a,b) => a.boundingClientRect.top - b.boundingClientRect.top); // sort from top of screen to bottom
     if(!visible.length) return;
     const cat = visible[0].target.dataset.cat;
-    if(cat && cat !== curCat){
+    if(cat && cat !== curCat){ // prevent unnecessary re-renders
       curCat = cat;
-      renderCats();
-      const activeBtn = document.querySelector('.cat-btn.on');
-      if(activeBtn) activeBtn.scrollIntoView({behavior:'smooth', block:'nearest', inline:'center'});
+      renderCats(); // highlight new cat
+      const activeBtn = document.querySelector('.cat-btn.on'); 
+      if(activeBtn) activeBtn.scrollIntoView({behavior:'smooth', block:'nearest', inline:'center'}); // keeps active cat centered in horizontal bar
     }
   }, {
-    threshold: 0.1,
-    rootMargin: '-20% 0px -60% 0px'
+    threshold: 0.1, // triggers when 10% visible
+    rootMargin: '-20% 0px -60% 0px' // adjusts active zone, 20% from top, 60% before bottom
   });
   document.querySelectorAll('.menu-sec-lbl[data-cat]').forEach(el => _catObserver.observe(el));
 }
@@ -446,7 +642,7 @@ function renderMenu(){
           </div>
         </div>`).join('')}</div>
     `).join('');
-    setTimeout(initCategoryScroll, 150);
+    requestAnimationFrame(initCategoryScroll);
 
 }
 
@@ -771,7 +967,7 @@ function removeCartItem(i){
         console.warn('Reverse geocode failed — using default area name');
       }
 
-      userLoc={lat,lng};
+      userLoc={lat,lng,areaName};
       ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
       ok.classList.remove('hidden');
       btn.textContent='✅ Continue to Payment';
@@ -782,7 +978,7 @@ function removeCartItem(i){
 }
 
 function goToPayment(){
-  const total = cart.reduce((s,i)=>s+i.price,0);
+  const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
   document.getElementById('pay-amt').textContent=F.money(total);
   const amt2 = document.getElementById('pay-amt2');
   if (amt2) amt2.textContent = F.money(total)
@@ -792,7 +988,7 @@ function goToPayment(){
 async function initPay() {
 const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCase();
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
-const orderTotal = cart.reduce((s,i)=>s+i.price,0);
+const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
 if(!mpesaName || mpesaName.length < 3){
   toast('Enter your M-Pesa registered name','err'); return;
@@ -853,12 +1049,13 @@ function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
     renderTracking(oid);
+    startOrderRealtime(oid); // FIX: get instant status updates instead of waiting for next poll
     const iv=setInterval(()=>renderTracking(oid),12000);
     setTimeout(()=>clearInterval(iv),300000);
 }
 
 async function loadHistory(){
-  const data = await apiFetch('/api/customer/orders');
+  const data = await apiFetch('/api/orders/history');
   const orders = data?.orders || [];
   document.getElementById('hist-list').innerHTML = orders.length
   ? orders.map(o=>orderRow(o)).join('')
@@ -866,60 +1063,161 @@ async function loadHistory(){
 }
 
 async function renderTracking(oid) {
-    let o=await apiFetch(`/api/orders/${oid}`);
-     if(!o){
-      document.getElementById('track-body').innerHTML=`
-        <div class="empty" style="padding-top:60px">
-          <div class="ei">📦</div>
-          <h3>ORDER NOT FOUND</h3>
-          <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact KFC Narok.</p>
-          <button class="btn btn-ghost" style="margin-top:16px" onclick="cPanel('menu')">← Back to Menu</button>
-        </div>`;
-      return;
-    }
-    const steps=[
-        {lbl:'Paid',     match:['paid','cooking','ready','rider_assigned','picked_up','delivered']},
-        {lbl:'Cooking',  match:['cooking','ready','rider_assigned','picked_up','delivered']},
-        {lbl:'On way',   match:['picked_up','delivered']},
-        {lbl:'Done',     match:['delivered']},
-    ];
-    const ai=steps.findLastIndex(s=>s.match.includes(o.status)); // order status, render location, shared security code for the customer, ratings after delivery
-    document.getElementById('track-body').innerHTML=`
-    <div class="trk-hdr"><div class="trk-no">Order ${o.order_number}</div><div class="trk-st">${F.status(o.status)}</div><div class="trk-eta">${o.status==='delivered'?'Delivered successfully':'Est. 20-40 minutes'}</div></div>
+  let o = await apiFetch(`/api/orders/${oid}`);
+  if(!o){
+    document.getElementById('track-body').innerHTML = `
+      <div class="empty" style="padding-top:60px">
+        <div class="ei">📦</div>
+        <h3>ORDER NOT FOUND</h3>
+        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact KFC Narok.</p>
+        <button class="btn btn-ghost" style="margin-top:16px" onclick="cPanel('menu')">← Back to Menu</button>
+      </div>`;
+    return;
+  }
+  
+  const steps = [
+    {lbl:'Paid', match:['paid','cooking','ready','rider_assigned','picked_up','delivered']},
+    {lbl:'Cooking', match:['cooking','ready','rider_assigned','picked_up','delivered']},
+    {lbl:'On way', match:['picked_up','delivered']},
+    {lbl:'Done', match:['delivered']},
+  ];
+  
+  const ai = steps.findLastIndex(s => s.match.includes(o.status));
+  
+  // Add rider selection for paid orders
+  const riderSection = o.status === 'paid' ? `
+    <div class="card" style="margin-top:11px">
+      <div class="card-t">🚴 CHOOSE YOUR RIDER</div>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Select a rider to deliver your order</p>
+      <div id="rider-list" style="max-height:200px;overflow-y:auto">
+        <div style="text-align:center;padding:20px"><span class="spin"></span> Loading riders...</div>
+      </div>
+    </div>
+  ` : '';
+  
+  // Show assigned rider info if already assigned
+  const assignedRider = o.rider_name ? `
+    <div class="card" style="margin-top:11px;background:var(--dark2)">
+      <div class="card-t">🏍️ RIDER ASSIGNED</div>
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 0">
+        <div style="font-size:2rem">🏍️</div>
+        <div>
+          <div style="font-weight:600">${o.rider_name}</div>
+          <div style="font-size:.8rem;color:var(--muted)">⭐ ${o.rider_rating || 'New'} · On the way</div>
+        </div>
+      </div>
+      ${o.status !== 'delivered' ? `
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
+      ` : ''}
+    </div>
+  ` : '';
+
+  document.getElementById('track-body').innerHTML = `
+    <div class="trk-hdr">
+      <div class="trk-no">Order ${o.order_number}</div>
+      <div class="trk-st">${F.status(o.status)}</div>
+      <div class="trk-eta">${o.status==='delivered'?'Delivered successfully':'Est. 20-40 minutes'}</div>
+    </div>
     <div class="prog">
-    ${steps.map((s,i)=>`
-          <div class="ps ${i<ai?'done':''} ${i===ai?'act':''}">
-           <div class="pd">${i<ai?'✓':s.lbl[0]}</div>
+      ${steps.map((s,i) => `
+        <div class="ps ${i<ai?'done':''} ${i===ai?'act':''}">
+          <div class="pd">${i<ai?'✓':s.lbl[0]}</div>
           <div class="pl">${s.lbl}</div>
         </div>
-         ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<ai?'var(--green)':'var(--line2)'};margin-bottom:20px"></div>`:''}`).join('')}
+        ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<ai?'var(--green)':'var(--line2)'};margin-bottom:20px"></div>`:''}`).join('')}
     </div>
     <div style="padding:0 16px 16px;max-width:500px;margin:0 auto">
-      ${o.rider_lat?`<div class="map-ph"><span style="position:relative;z-index:1;font-size:.85rem;color:var(--muted2)">Rider location</span><a class="map-link" href="https://maps.google.com/?q=${o.rider_lat},${o.rider_lng}" target="_blank">📍 Open Map</a></div>`:
-      `<div class="map-ph"><span style="position:relative;z-index:1;font-size:.8rem;color:var(--muted)">Map updates when rider is assigned</span></div>`}
-      ${o.status==='rider_assigned'||o.status==='picked_up'?`
-        <button class="btn btn-ghost btn-full" style="margin-top:8px" 
-    onclick="openChat(${o.id},'customer')">💬 Chat with Rider - Agree Delivery Fee</button>`:''}    
+      ${o.rider_lat ? `
+        <div class="map-ph">
+          <span style="position:relative;z-index:1;font-size:.85rem;color:var(--muted2)">Rider location</span>
+          <a class="map-link" href="https://maps.google.com/?q=${o.rider_lat},${o.rider_lng}" target="_blank">📍 Open Map</a>
+        </div>
+      ` : `
+        <div class="map-ph">
+          <span style="position:relative;z-index:1;font-size:.8rem;color:var(--muted)">Map updates when rider is assigned</span>
+        </div>
+      `}
+      ${riderSection}
+      ${assignedRider}
+      ${['paid','cooking','ready','rider_assigned','picked_up'].includes(o.status) ? `
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
+      ` : ''}
       <div class="card">
         <div class="card-t">ORDER SUMMARY</div>
-         ${(o.items||[]).map(i=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem"><span>${i.name}${i.chickenType?` <span style="background:var(--red);color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px">${i.chickenType}</span>`:''}${i.note?` <span style="color:var(--orange);font-size:.73rem">(${i.note})</span>`:''}</span><span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">${F.money(i.price)}</span></div>`).join('')}
+        ${(o.items||[]).map(i => `
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem">
+            <span>${i.name}${i.chickenType ? ` <span style="background:var(--red);color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px">${i.chickenType}</span>` : ''}${i.note ? ` <span style="color:var(--orange);font-size:.73rem">(${i.note})</span>` : ''}</span>
+            <span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">${F.money(i.price)}</span>
+          </div>
+        `).join('')}
       </div>
+    </div>
+    <div class="card" style="margin-top:11px;text-align:center;font-size:.81rem;color:var(--muted)">
+      🔐 Delivery PIN sent to your phone via SMS<br>
+      <span style="font-size:.73rem">Share it with your rider <strong style="color:var(--white)">only after</strong> receiving your food</span>
+    </div>
+    ${o.status === 'delivered' ? `
+      <div class="card" style="margin-top:11px" id="rating-card">
+        <div class="card-t">RATE YOUR ORDER</div>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Food quality:</p>
+        <div class="stars" id="food-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('food',${n})">⭐</span>`).join('')}</div>
+        <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">Rider service:</p>
+        <div class="stars" id="rider-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('rider',${n})">⭐</span>`).join('')}</div>
+        <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="submitRating()">Submit Rating</button>
       </div>
-      <div class="card" style="margin-top:11px;text-align:center;font-size:.81rem;color:var(--muted)">
-        🔐 Your delivery PIN was sent by SMS<br>
-        <span style="font-size:.73rem">Share it with your rider <strong style="color:var(--white)">only after</strong> receiving your food</span>
+    ` : ''}
+  `;
+  
+  // Load available riders if order is paid
+  if (o.status === 'paid') {
+    loadAvailableRiders(oid);
+  }
+}
+
+// Load available riders and display them
+async function loadAvailableRiders(orderId) {
+  const list = document.getElementById('rider-list');
+  if (!list) return;
+  
+  // FIX: correct URL — route is under /api/rider, not /api/riders
+  const riders = await apiFetch('/api/rider/available');
+  
+  if (!riders?.length) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">No riders available. Trying again...</div>';
+    return;
+  }
+  
+  list.innerHTML = riders.map(r => `
+    <div class="rider-select" onclick="selectRider('${orderId}', '${r.phone}', this)" style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--dark3);border-radius:8px;margin-bottom:8px;cursor:pointer;border:1.5px solid transparent">
+      <div style="font-size:1.8rem">🏍️</div>
+      <div style="flex:1">
+        <div style="font-weight:600">${r.name}</div>
+        <div style="font-size:.75rem;color:var(--muted)">⭐ ${r.rating || 'New'} · ${r.total_deliveries || 0} deliveries</div>
       </div>
-      ${o.status==='delivered'?`
-        <div class="card" style="margin-top:11px" id="rating-card">
-          <div class="card-t">RATE YOUR ORDER</div>
-          <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Food quality:</p>
-          <div class="stars" id="food-stars">${[1,2,3,4,5].map(n=>`<span class="star" onclick="setRating('food',${n})">⭐</span>`).join('')}</div>
-          <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">Rider service:</p>
-          <div class="stars" id="rider-stars">${[1,2,3,4,5].map(n=>`<span class="star" onclick="setRating('rider',${n})">⭐</span>`).join('')}</div>
-          <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="submitRating()">Submit Rating</button>
-        </div>`:''}
-    </div>`;
-    
+      <div style="color:var(--green)">Select →</div>
+    </div>
+  `).join('');
+}
+
+// Customer selects a rider
+async function selectRider(orderId, riderPhone, el) { // FIX: accept element directly — event.target is unreliable
+  if (!confirm('Assign this rider to your order?')) return;
+  
+  if(el) el.innerHTML = '<span class="spin"></span> Assigning...';
+  
+  // FIX: route is under /api/rider, not /api/orders
+  const res = await apiFetch(`/api/rider/${orderId}/assign-rider`, {
+    method: 'POST',
+    body: { rider_phone: riderPhone }
+  });
+  
+  if (res?.success) {
+    toast('Rider assigned! They will contact you. 🚴', 'ok');
+    renderTracking(orderId); // Refresh to show assigned rider
+  } else {
+    toast('Failed to assign rider. Try again.', 'err');
+    loadAvailableRiders(orderId);
+  }
 }
 
 function setRating(type,val){
@@ -946,7 +1244,7 @@ function haversine(a,b,c,d){ const R=6371,dL=(c-a)*Math.PI/180,dG=(d-b)*Math.PI/
 
 function launchRider(){
     screen('s-rider');
-    // check if first time(no name) => Registration
+    startRiderRealtime(); // FIX: subscribe to dispatch broadcasts as soon as rider logs in
     if(!riderState.name){
         riderState.regStep=0;
         renderRiderReg();
@@ -1205,6 +1503,13 @@ function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}
 
 function acceptOrder(){
     if(oTimer) clearInterval(oTimer);
+    // FIX: notify the backend so the order is assigned in the DB and no other rider can take it
+    if(riderState.activeOrder?.id){
+        apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {
+            method: 'POST',
+            headers: { 'x-user-phone': riderState.phone || user.phone }
+        });
+    }
     toast('Order accepted! Head to KFC Narok 🏍️','ok');
     document.getElementById('r-alert-zone').innerHTML='';
     riderState.collected=false;
@@ -1328,7 +1633,8 @@ function markCollected(){
 
 function startLocTracking(){
   if(!navigator.geolocation) return;
-  setInterval(()=>{
+  if(_locInterval) clearInterval(_locInterval); // FIX: clear existing interval before creating new one
+  _locInterval = setInterval(()=>{
     navigator.geolocation.getCurrentPosition(p=>{
       apiFetch('/api/rider/location',{method:'POST',body:{lat:p.coords.latitude,lng:p.coords.longitude}});
     });
@@ -1338,6 +1644,7 @@ function startLocTracking(){
 
 // KITCHEN APP
 let kInterval=null;
+let _locInterval=null; // FIX: track location interval so it can be cleared on re-toggle
 
 function launchKitchen(){
   screen('s-kitchen');
@@ -1345,7 +1652,8 @@ function launchKitchen(){
   kOrders=[];
   if(kInterval) clearInterval(kInterval);
   pollKitchen();
-  kInterval=setInterval(pollKitchen,8000); // It runs automatically every 8 seconds so the kitchen board remains fresh, no need to manually refresh
+  kInterval=setInterval(pollKitchen,8000);
+  startKitchenRealtime(); // FIX: start realtime so new orders appear and beep instantly
 }
 
 function startClock(){
@@ -1445,8 +1753,12 @@ async function renderAdminOverview() {
     <div class="a-mc"><div class="a-mc-ico">✅</div><div class="a-mc-v">${stats?.delivered_today||done}</div><div class="a-mc-l">Done Today</div></div>
     <div class="a-mc"><div class="a-mc-ico">💰</div><div class="a-mc-v" style="color:var(--green)">KES ${(stats?.revenue_today||(done*580)).toLocaleString()}</div><div class="a-mc-l">Revenue Today</div></div>
     <div class="a-mc"><div class="a-mc-ico">🏍️</div><div class="a-mc-v">${stats?.online_riders||2}</div><div class="a-mc-l">Online Riders</div></div>`;
-  const recent=[...DEMO_ORDERS_A].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
-  document.getElementById('a-recent').innerHTML=recent.map(o=>orderRow(o)).join('');
+  // FIX: fetch real recent orders from the API — DEMO_ORDERS_A is always empty
+  const recentData = await apiFetch('/api/admin/orders');
+  const recent = (recentData?.orders || []).slice(0, 5);
+  document.getElementById('a-recent').innerHTML = recent.length
+    ? recent.map(o=>orderRow(o, true)).join('')
+    : '<div class="empty"><div class="ei">📦</div><h3>NO RECENT ORDERS</h3></div>';
 }
 
 async function renderAdminOrders(){
@@ -1462,16 +1774,18 @@ function orderRow(o){
   return `<div class="o-row">
     <div class="or-l">
       <div class="or-num">${o.order_number}</div>
-      <div class="or-m">${items} · ${o.customer_area||'Narok'} · ${F.date(o.created_at)}</div>
+      <div class="or-m">${o.customer_name ? o.customer_name+' · ': ''}${items} · ${o.customer_area||'Narok'} · ${F.date(o.created_at)}</div>
       ${o.mpesa_reference
         ? `<div style="font-size:.72rem;color:var(--green);font-weight:600;margin-top:3px">💳 ${o.mpesa_reference}</div>`
         : `<div style="font-size:.72rem;color:var(--orange);margin-top:3px">⏳ No payment proof</div>`
-      }
+      }${o.rider_phone
+  ? `<div style="font-size:.72rem;color:var(--blue);margin-top:2px">🏍️ ${o.rider_name||o.rider_phone}</div>`
+  : ''}
       </div>
     <div class="or-r">
       <div class="or-p">${F.money(o.food_amount)}</div>
       <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
-      ${o.status==='pending'?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>`:''}
+      ${o.status==='pending' || o.status === 'awaiting_payment'?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>`:''}
     </div>
   </div>`;
 }
@@ -1744,7 +2058,7 @@ function startKitchenRealtime(){
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'orders'},()=>{
       pollKitchen(); playBeep();
     })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'},()=>{
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'},(payload)=>{
       pollKitchen();
     })
     .subscribe(status=>{
@@ -1788,6 +2102,13 @@ function startRiderRealtime(){
       }
     })
     .subscribe();
+
+    supa.channel('order-chat-'+activeOrderId)
+  .on('broadcast',{event:'chat_request'},({payload})=>{
+    toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
+    playBeep();
+  })
+  .subscribe();
 }
 
 // SUPABASE REALTIME — CUSTOMER ORDER TRACKING
@@ -1861,6 +2182,16 @@ function openChat(orderId, myRole){
       playBeep();
     })
     .subscribe();
+
+    if(myRole === 'customer'){
+  // Notify the rider a customer wants to chat
+  setTimeout(async()=>{
+    await chatChannel.send({
+      type:'broadcast', event:'chat_request',
+      payload:{ orderId, customerName: user.name }
+    });
+  }, 500);
+}
 
   document.getElementById('chat-ov').classList.add('on');
   document.getElementById('chat-sheet').classList.add('on');
