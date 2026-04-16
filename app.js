@@ -361,24 +361,156 @@ function buildFields(type){
   return `<div class="field"><label class="field-lbl">Passcode</label><input class="inp" id="f-code" type="password" placeholder="Enter passcode" autocomplete="off"/></div>`;
 }
 
-function showCustomerLogin(){
-  document.getElementById('at').textContent='SIGN IN';
-  document.getElementById('as').textContent='Enter your phone number';
-  document.getElementById('af').innerHTML=buildFields('phone');
+// Customer Login
+function showCustomerLogin() {
+  document.getElementById('ai').textContent = cfg.icon;
+  document.getElementById('at').textContent = 'SIGN IN';
+  document.getElementById('as').textContent = 'Enter your phone number to continue';
+  document.getElementById('af').innerHTML = `
+    <div class="field">
+      <label class="field-lbl">Phone Number</label>
+      <div style="display:flex;gap:8px">
+        <span style="padding:12px;background:var(--dark2);border-radius:8px;color:var(--muted)">+254</span>
+        <input class="inp" id="f-phone" placeholder="712345678" inputmode="tel" maxlength="9" style="flex:1"/>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="loginCustomer()">
+      Continue →
+    </button>
+    <p style="text-align:center;margin-top:16px;font-size:.85rem;color:var(--muted)">
+      Don't have an account? 
+      <a href="#" onclick="showCustomerRegister(); return false;" style="color:var(--red)">Create Account</a>
+    </p>
+  `;
+  screen('s-auth');
+  
   const contBtn = document.getElementById('auth-btn');
-  if(contBtn) { contBtn.style.display = 'block'; contBtn.textContent = 'Continue →'; }
-  setTimeout(()=>document.querySelector('#af input')?.focus(),100);
-  enableEnterKey('auth-btn');
+  if(contBtn) contBtn.style.display = 'none';
 }
 
-function showCustomerRegister(){
-  document.getElementById('at').textContent='CREATE ACCOUNT';
-  document.getElementById('as').textContent='Enter your details to get started';
-  document.getElementById('af').innerHTML=buildFields('name+phone');
-    const contBtn = document.getElementById('auth-btn');
-  if(contBtn) { contBtn.style.display = 'block'; contBtn.textContent = 'Create Account →'; }
-  setTimeout(()=>document.querySelector('#af input')?.focus(),100);
-  enableEnterKey('auth-btn');
+async function loginCustomer() {
+  const phone = document.getElementById('f-phone')?.value.trim();
+
+  if(!phone || phone.length < 9){
+    toast('Please enter your phone number','err');
+    return;
+  }
+
+  const fullPhone = `254${phone}`;
+
+  // Check if user exists
+  const checkRes = await apiFetch('/api/auth/login', {
+    method: 'POST',
+    body: { phone: fullPhone }
+  });
+
+  if(checkRes?.needsRegistration){
+    toast('No account found. Please register first.','err');
+    setTimeout(() => showCustomerRegister(), 1500);
+    return;
+  }
+
+  if(!checkRes?.success){
+    toast(checkRes?.error || 'Login failed','err');
+    return;
+  }
+
+  // Send OTP for verification
+  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
+    // OTP verified - fetch user data
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone', verifiedPhone)
+      .single();
+
+    if(customer){
+      localStorage.setItem('userPhone', customer.phone);
+      localStorage.setItem('userName', customer.name);
+
+      toast(`Welcome back, ${customer.name}! 🎉`, 'ok');
+      showMenu();
+    } else {
+      toast('Could not load account data','err');
+    }
+  });
+}
+
+// Customer Registration
+function showCustomerRegister() {
+  document.getElementById('ai').textContent = cfg.icon;
+  document.getElementById('at').textContent = 'CREATE ACCOUNT';
+  document.getElementById('as').textContent = 'Join MotoBite and start ordering';
+  document.getElementById('af').innerHTML = `
+    <div class="field">
+      <label class="field-lbl">Full Name</label>
+      <input class="inp" id="f-name" placeholder="John Doe"/>
+    </div>
+    <div class="field">
+      <label class="field-lbl">Phone Number</label>
+      <div style="display:flex;gap:8px">
+        <span style="padding:12px;background:var(--dark2);border-radius:8px;color:var(--muted)">+254</span>
+        <input class="inp" id="f-phone" placeholder="712345678" inputmode="tel" maxlength="9" style="flex:1"/>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="registerCustomer()">
+      Continue →
+    </button>
+    <p style="text-align:center;margin-top:16px;font-size:.85rem;color:var(--muted)">
+      Already have an account? 
+      <a href="#" onclick="showCustomerLogin(); return false;" style="color:var(--red)">Sign In</a>
+    </p>
+  `;
+  screen('s-auth');
+  
+  const contBtn = document.getElementById('auth-btn');
+  if(contBtn) contBtn.style.display = 'none';
+}
+
+async function registerCustomer() {
+  const name = document.getElementById('f-name')?.value.trim();
+  const phone = document.getElementById('f-phone')?.value.trim();
+
+  // Validation
+  if(!name || name.length < 2){
+    toast('Please enter your full name','err');
+    return;
+  }
+
+  if(!phone || phone.length < 9){
+    toast('Please enter a valid phone number','err');
+    return;
+  }
+
+  const fullPhone = `254${phone}`;
+
+  // Save name temporarily
+  localStorage.setItem('temp_name', name);
+
+  // Send OTP and verify
+  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
+    // OTP verified - complete registration
+    const savedName = localStorage.getItem('temp_name');
+    
+    const res = await apiFetch('/api/auth/register', {
+      method: 'POST',
+      body: { phone: verifiedPhone, name: savedName }
+    });
+
+    if(res?.success){
+      // Save user data
+      localStorage.setItem('userPhone', verifiedPhone);
+      localStorage.setItem('userName', savedName);
+      localStorage.removeItem('temp_name');
+
+      toast(`Welcome to MotoBite, ${savedName}! 🎉`, 'ok');
+      
+      // Go to menu
+      showMenu();
+    } else {
+      toast(res?.error || 'Registration failed','err');
+    }
+  });
 }
 
 // ── RIDER AUTH SCREENS ────────────────────────────────────────────────────────
@@ -451,26 +583,40 @@ async function resendOtp(phone){
 async function verifyOtp() {
   const pin = document.getElementById('f-otp')?.value.trim();
   const btn = document.getElementById('auth-btn');
-  if(!pin || pin.length < 6){ toast('Enter the 6-digit code','err'); return; }
+  
+  if(!pin || pin.length < 6){ 
+    toast('Enter the 6-digit code','err'); 
+    return; 
+  }
 
-  btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span>'; 
+  btn.disabled=true;
 
-  const res = await apiFetch('/api/auth/verify-otp', { method:'POST', body:{ phone: window._otpPhone, pin } });
+  const res = await apiFetch('/api/auth/verify-otp', { 
+    method:'POST', 
+    body:{ phone: window._otpPhone, pin }  // Backend accepts 'pin'
+  });
 
-  btn.innerHTML='Verify →'; btn.disabled=false;
+  btn.innerHTML='Verify →'; 
+  btn.disabled=false;
 
   if(!res?.success){
-    toast('Wrong code — check your SMS and try again','err');
+    toast(res?.error || 'Wrong code — check your SMS and try again','err');
     document.getElementById('f-otp').value='';
     document.getElementById('f-otp').focus();
     return;
   }
 
+  // ✅ OTP verified successfully
+  toast('✅ Phone verified!', 'ok');
+  
   const cb = window._otpSuccess;
   const verifiedPhone = window._otpPhone;
+  
   window._otpPhone   = null;
   window._otpSuccess = null;
   window._otpMode    = false;
+  
   cb(verifiedPhone);
 }
 
