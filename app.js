@@ -363,7 +363,6 @@ function buildFields(type){
 
 // Customer Login
 function showCustomerLogin() {
-  document.getElementById('ai').textContent = cfg.icon;
   document.getElementById('at').textContent = 'SIGN IN';
   document.getElementById('as').textContent = 'Enter your phone number to continue';
   document.getElementById('af').innerHTML = `
