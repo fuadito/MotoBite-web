@@ -390,47 +390,34 @@ function showCustomerLogin() {
 async function loginCustomer() {
   const phone = document.getElementById('f-phone')?.value.trim();
 
-  if(!phone || phone.length < 9){
+  if(!phone || phone.replace(/\D/g,'').length < 9){
     toast('Please enter your phone number','err');
     return;
   }
 
-  const fullPhone = `254${phone}`;
+  // Build normalized phone — send-otp expects '254XXXXXXXXX' (no + prefix)
+  const digits = phone.replace(/\D/g,'');
+  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
 
-  // Check if user exists
-  const checkRes = await apiFetch('/api/auth/login', {
-    method: 'POST',
-    body: { phone: fullPhone }
-  });
-
-  if(checkRes?.needsRegistration){
-    toast('No account found. Please register first.','err');
-    setTimeout(() => showCustomerRegister(), 1500);
-    return;
-  }
-
-  if(!checkRes?.success){
-    toast(checkRes?.error || 'Login failed','err');
-    return;
-  }
-
-  // Send OTP for verification
+  // Go straight to OTP — skip the broken /api/auth/login call (route does not exist → 404)
+  // If no account exists, we catch it after OTP verification and redirect to register.
   await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
-    // OTP verified - fetch user data
-    const { data: customer } = await supabase
+    // OTP verified — look up customer directly from Supabase
+    const { data: customer } = await supa
       .from('customers')
       .select('*')
       .eq('phone', verifiedPhone)
-      .single();
+      .maybeSingle();
 
     if(customer){
-      localStorage.setItem('userPhone', customer.phone);
-      localStorage.setItem('userName', customer.name);
-
-      toast(`Welcome back, ${customer.name}! 🎉`, 'ok');
-      showMenu();
+      user = { name: customer.name, phone: customer.phone };
+      localStorage.setItem('kfc_user', JSON.stringify(user));
+      toast(`Welcome back, ${customer.name}! 👋`, 'ok');
+      launchCustomer();
     } else {
-      toast('Could not load account data','err');
+      // Phone verified but no customer record — send to register
+      toast('No account found. Please create one.','err');
+      setTimeout(() => showCustomerRegister(), 1500);
     }
   });
 }
@@ -496,15 +483,13 @@ async function registerCustomer() {
     });
 
     if(res?.success){
-      // Save user data
-      localStorage.setItem('userPhone', verifiedPhone);
-      localStorage.setItem('userName', savedName);
+      // Save user data using the same kfc_user key the rest of the app reads
+      user = { name: savedName, phone: verifiedPhone };
+      localStorage.setItem('kfc_user', JSON.stringify(user));
       localStorage.removeItem('temp_name');
 
       toast(`Welcome to MotoBite, ${savedName}! 🎉`, 'ok');
-      
-      // Go to menu
-      showMenu();
+      launchCustomer();
     } else {
       toast(res?.error || 'Registration failed','err');
     }
