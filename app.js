@@ -397,7 +397,7 @@ async function loginCustomer() {
 
   // Build normalized phone — send-otp expects '254XXXXXXXXX' (no + prefix)
   const digits = phone.replace(/\D/g,'');
-  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
+  const fullPhone = digits.startsWith('254') ? `+${digits}` : `+254${digits}`;
 
   // Go straight to OTP — skip the broken /api/auth/login call (route does not exist → 404)
   // If no account exists, we catch it after OTP verification and redirect to register.
