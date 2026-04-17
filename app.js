@@ -631,7 +631,7 @@ async function authSubmit() {
    }
    try {
      const u = JSON.parse(saved);
-     const normalized = F.norm(raw);
+     const normalized = toE164(raw);
      if(u.phone !== normalized){
        toast('Phone number not recognized.','err');
        return reset();
@@ -647,7 +647,7 @@ async function authSubmit() {
      toast('Enter your full name','err');
      return reset();
    }
-   user = { name, phone: F.norm(raw) };
+   user = { name, phone: toE164(raw) };
  }
 
  // CORRECT — OTP only for new customers
@@ -678,7 +678,7 @@ return;
      else if(role==='rider'){
  const raw=document.getElementById('f-phone')?.value.trim();
         if(!raw||raw.replace(/\D/g,'').length<9){ toast('Enter a valid phone number','err'); return reset(); }
-        user.phone=F.norm(raw);
+        user.phone=toE164(raw);
 
         // ── SIGN IN mode — no OTP needed, just look up their account ──────
         if(window._riderMode === 'signin'){
@@ -1259,7 +1259,8 @@ cart = [];
 updateCartUI();
 showTracking(oid);
 
-}
+  } // end else
+} // end initPay
 
 // Customer confirms they have paid via M-Pesa
 async function confirmPayment(orderId) {
@@ -2454,7 +2455,7 @@ function openChat(orderId, myRole){
       payload:{ orderId, customerName: user.name }
     });
   }, 500);
-}
+  } // end if myRole==='customer'
 
   document.getElementById('chat-ov').classList.add('on');
   document.getElementById('chat-sheet').classList.add('on');
@@ -2509,5 +2510,4 @@ function renderChatMessages(){
     </div>`;
   }).join('');
   el.scrollTop=el.scrollHeight;
-}
 }
