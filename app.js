@@ -2227,55 +2227,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   const saved = localStorage.getItem('kfc_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
 
-  // Check URL for hidden role access — not shown on landing page
-  // Kitchen: yoursite.com/?role=kitchen
-  // Admin:   yoursite.com/?role=admin
   const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole === 'kitchen'){
-    selectRole('kitchen');
-    return;
-  }
-  if(urlRole === 'admin'){
-    screen('s-admin-login');
-    return;
-  }
-  if(urlRole === 'rider'){
-    selectRole('rider');
-    return;
-  }
+  if(urlRole === 'kitchen'){ selectRole('kitchen'); return; }
+  if(urlRole === 'admin'){ screen('s-admin-login'); return; }
+  if(urlRole === 'rider'){ selectRole('rider'); return; }
 
-  // ── Restore sessions on page refresh ──────────────────────────────────────
-
-  // Restore kitchen session
   if(localStorage.getItem('kfc_kitchen')){
-    role = 'kitchen';
-    launchKitchen();
-    return;
+    role = 'kitchen'; launchKitchen(); return;
   }
 
-  // Restore customer session — takes priority over rider
-  // (prevents leftover kfc_rider from testing hijacking the customer landing)
   if(user.name && user.phone){
-    role = 'customer';
-    launchCustomer();
-    return;
+    role = 'customer'; launchCustomer(); return;
   }
 
-  // Restore rider session — only if no customer session exists
   const savedRider = localStorage.getItem('kfc_rider');
   if(savedRider){
     try{
       const rd = JSON.parse(savedRider);
       user.phone = rd.phone;
       const data = await apiFetch('/api/rider/login',{method:'POST',body:{phone:rd.phone}});
-      // Only restore if rider is approved (has a name) — not pending/suspended
       if(data && data.name && data.status === 'approved'){
         riderState = {...riderState, ...data, phone:rd.phone};
-        role = 'rider';
-        launchRider();
-        return;
+        role = 'rider'; launchRider(); return;
       } else {
-        // Stale or invalid rider session — clear it
         localStorage.removeItem('kfc_rider');
       }
     }catch{
@@ -2283,15 +2257,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Check for existing Supabase admin session
   const { data: { session }} = await supa.auth.getSession();
   if(session){
-    role = 'admin';
-    launchAdmin();
-    return;
+    role = 'admin'; launchAdmin(); return;
   }
 
-  supa.auth.onAuthStateChange((event, session) => {
+}); // ← closes DOMContentLoaded
+
+// onAuthStateChange lives OUTSIDE DOMContentLoaded at the top level
+supa.auth.onAuthStateChange((event, session) => {
   if(event === 'SIGNED_IN' && role !== 'admin'){
     role = 'admin';
     launchAdmin();
@@ -2300,7 +2274,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     role = null;
     screen('s-landing');
   }
-});
+}); // ← closes onAuthStateChange
 
 
 // Admin Supabase Login
