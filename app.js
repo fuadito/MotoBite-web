@@ -467,7 +467,10 @@ async function registerCustomer() {
     return;
   }
 
-  const fullPhone = `254${phone}`;
+// CORRECT — consistent with rest of app
+const fullPhone = phone.startsWith('0') 
+  ? `+254${phone.slice(1)}` 
+  : `+254${phone}`;
 
   // Save name temporarily
   localStorage.setItem('temp_name', name);
@@ -1932,9 +1935,11 @@ async function pollKitchen(){
 } //check data is not null, then access orders //updates the global KOrders with fresh orders from backend  // Redraws the entire kitchen board with updated orders,any status change will reflect immediately.
 
 function renderKitchen(){
-  const nw=kOrders.filter(o=>['pending','paid'].includes(o.status));
-  const co=kOrders.filter(o=>o.status==='cooking');
-  const rd=kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
+  const pending = kOrders.filter(o=>o.status==='pending');
+  const nw = kOrders.filter(o=>['pending','paid'].includes(o.status));
+  const co = kOrders.filter(o=>o.status==='cooking');
+  const rd = kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
+
   document.getElementById('ks-new').textContent=nw.length;
   document.getElementById('ks-cook').textContent=co.length;
   document.getElementById('ks-rdy').textContent=rd.length;
@@ -1942,20 +1947,28 @@ function renderKitchen(){
   document.getElementById('kc-n').textContent=nw.length;
   document.getElementById('kc-c').textContent=co.length;
   document.getElementById('kc-r').textContent=rd.length;
-  document.getElementById('kb-new').innerHTML=nw.length?nw.map(o=>kCard(o,'new')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
-  document.getElementById('kb-cook').innerHTML=co.length?co.map(o=>kCard(o,'cook')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
-  document.getElementById('kb-rdy').innerHTML=rd.length?rd.map(o=>kCard(o,'rdy')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
+  document.getElementById('kb-new').innerHTML=nw.length
+    ?nw.map(o=>kCard(o,'new')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
+  document.getElementById('kb-cook').innerHTML=co.length
+    ?co.map(o=>kCard(o,'cook')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
+  document.getElementById('kb-rdy').innerHTML=rd.length
+    ?rd.map(o=>kCard(o,'rdy')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
 }
-
 function kCard(o,type){   //Builds a single order card for the kitchen board (order index, type: new, cook or rdy)
   const ageMins=Math.floor((Date.now()-new Date(o.paid_at))/60000); // calculates time in minuted that have passed since the customer paid
   const urgent=ageMins>15&&type!=='rdy';   // two conditions: order waiting time more than 15min, order not in the ready column. Then the order is deemed urgent.
-  const action={
-    new:`<div style="font-size:.7rem;color:${o.status==='paid'?'var(--green)':'var(--orange)'};margin-bottom:6px">${o.status==='paid'?'✅ PAID':'⏳ AWAITING PAYMENT'}</div>
-    <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
-    cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
-    rdy:`<div class="kb wait">${o.status==='rider_assigned'?'🏍️ Rider Assigned':'⏳ Awaiting Rider'}</div>`
-  }[type];
+ const action={
+  new: o.status==='pending'
+    ? `<div style="font-size:.7rem;color:var(--orange);margin-bottom:6px">⏳ AWAITING PAYMENT</div>
+       <button class="kb cook" disabled style="opacity:.4;cursor:not-allowed">🔥 Start Cooking</button>`
+    : `<div style="font-size:.7rem;color:var(--green);margin-bottom:6px">✅ PAID — Ready to cook</div>
+       <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
+  cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
+  rdy:`<div class="kb wait">${o.status==='rider_assigned'?'🏍️ Rider Assigned':'⏳ Awaiting Rider'}</div>`
+}[type];
   return  `<div class="kc" id="kc-${o.id}">
      <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
