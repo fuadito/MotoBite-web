@@ -21,7 +21,7 @@ let kOrders = [];
 let kDone = 0;
 let chatOrderId = null;
 let chatMyRole = null;
-let chatMsgs = [];
+let chatMsgs = {};
 let chatChannel = null;
 let _catObserver = null;
 
@@ -395,33 +395,26 @@ async function loginCustomer() {
     return;
   }
 
-  // Build normalized phone — send-otp expects '254XXXXXXXXX' (no + prefix)
   const digits = phone.replace(/\D/g,'');
   const fullPhone = digits.startsWith('254') ? `+${digits}` : `+254${digits}`;
 
-  // Go straight to OTP — skip the broken /api/auth/login call (route does not exist → 404)
-  // If no account exists, we catch it after OTP verification and redirect to register.
-  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
-    // OTP verified — look up customer directly from Supabase
-    const { data: customer } = await supa
-      .from('customers')
-      .select('*')
-      .eq('phone', verifiedPhone)
-      .maybeSingle();
+  // Look up customer directly — no OTP needed for returning users
+  const { data: customer } = await supa
+    .from('customers')
+    .select('*')
+    .eq('phone', fullPhone)
+    .maybeSingle();
 
-    if(customer){
-      user = { name: customer.name, phone: customer.phone };
-      localStorage.setItem('kfc_user', JSON.stringify(user));
-      toast(`Welcome back, ${customer.name}! 👋`, 'ok');
-      launchCustomer();
-    } else {
-      // Phone verified but no customer record — send to register
-      toast('No account found. Please create one.','err');
-      setTimeout(() => showCustomerRegister(), 1500);
-    }
-  });
+  if(customer){
+    user = { name: customer.name, phone: customer.phone };
+    localStorage.setItem('kfc_user', JSON.stringify(user));
+    toast(`Welcome back, ${customer.name}! 👋`, 'ok');
+    launchCustomer();
+  } else {
+    toast('No account found. Please create one.','err');
+    setTimeout(() => showCustomerRegister(), 1500);
+  }
 }
-
 // Customer Registration
 function showCustomerRegister() {
   document.getElementById('at').textContent = 'CREATE ACCOUNT';
@@ -508,6 +501,11 @@ function showRiderSignIn(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Sign In →'; }
+
+    // ADD — hide back/cancel for rider screens
+  document.querySelector('.auth-back')?.style.setProperty('display','none');
+  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
+
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   // Mark as sign-in mode so authSubmit knows not to create a new account
@@ -521,6 +519,11 @@ function showRiderRegister(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Register →'; }
+
+    // ADD — hide back/cancel for rider screens
+  document.querySelector('.auth-back')?.style.setProperty('display','none');
+  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
+
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   window._riderMode = 'register';
@@ -1249,12 +1252,13 @@ if(!amountPaid || amountPaid < orderTotal){
     // STK push was sent — highlight the phone prompt
     if(stkBox)  stkBox.style.display='block';
     if(manualPay) manualPay.style.display='none';
-    btn.innerHTML='📱 q1  Waiting for M-Pesa payment...'; btn.disabled=true;
+    btn.innerHTML='📱 Waiting for M-Pesa payment...'; btn.disabled=true;
     toast('Check your phone — M-Pesa prompt sent! 📱','ok',6000);
   } else {
     // STK not yet live — manual payment flow
 btn.innerHTML = '✅ Confirm Payment';
 btn.disabled = false;
+enableEnterKey('auth-btn');
 // Change button to confirm payment instead of creating new order
 btn.onclick = () => confirmPayment(oid);
 toast('Order placed! Pay via M-Pesa, then click "Confirm Payment" 📱', 'ok', 5000);
@@ -1301,6 +1305,10 @@ async function confirmPayment(orderId) {
 function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
+
+      // ADD — hide cart float once order is placed
+  document.getElementById('cart-float')?.classList.add('hidden');
+
     renderTracking(oid);
     startOrderRealtime(oid); // FIX: get instant status updates instead of waiting for next poll
     const iv=setInterval(()=>renderTracking(oid),12000);
@@ -1507,9 +1515,18 @@ async function submitRating(){
 
 // RIDER APP
 
-function launchRider(){
+async function launchRider(){
     screen('s-rider');
     startRiderRealtime(); // FIX: subscribe to dispatch broadcasts as soon as rider logs in
+
+     // ADD — restore active delivery if rider refreshes mid-delivery
+  if(!riderState.activeOrder){
+    const saved = localStorage.getItem('kfc_active_delivery');
+    if(saved){
+      try{ riderState.activeOrder = JSON.parse(saved); }catch{}
+    }
+  }
+
     if(!riderState.name){
         riderState.regStep=0;
         renderRiderReg();
@@ -1767,18 +1784,16 @@ function showRiderOrderAlert(o){
 function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
 function acceptOrder(){
-    if(oTimer) clearInterval(oTimer);
-    // FIX: notify the backend so the order is assigned in the DB and no other rider can take it
-    if(riderState.activeOrder?.id){
-        apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {
-            method: 'POST',
-            headers: { 'x-user-phone': riderState.phone || user.phone }
-        });
-    }
-    toast('Order accepted! Head to KFC Narok 🏍️','ok');
-    document.getElementById('r-alert-zone').innerHTML='';
-    riderState.collected=false;
-    rPanel('delivery', document.querySelector('[data-s="delivery"]'));
+  if(oTimer) clearInterval(oTimer);
+  apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {method:'POST'});
+  
+  // ADD — persist active order so it survives refresh
+  localStorage.setItem('kfc_active_delivery', JSON.stringify(riderState.activeOrder));
+  
+  toast('Order accepted! Head to KFC Narok 🏍️','ok');
+  document.getElementById('r-alert-zone').innerHTML='';
+  riderState.collected=false;
+  rPanel('delivery', document.querySelector('[data-s="delivery"]'));
 }
 
 function declineOrder(){
@@ -1814,9 +1829,12 @@ function renderRiderDelivery(){
           onclick="openChat(${o.id},'rider')">
           💬 Chat with Customer — Negotiate Fee
       </button>
-      ${riderState.collected
-        ?`<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
-        :`<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`}
+    ${riderState.collected
+  ? `<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
+  : riderState.activeOrder?.status === 'paid' || riderState.activeOrder?.status === 'rider_assigned'
+    ? `<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`
+    : `<div style="text-align:center;padding:10px;color:var(--orange);font-size:.85rem">⏳ Awaiting payment confirmation from admin</div>`
+}
     </div>
   </div>`;
 }
@@ -1862,7 +1880,8 @@ function markCollected(){
     document.querySelectorAll('#s-rider .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='home'));
     renderRiderHome();
     toast(`🎉 PIN correct! Collect delivery fee from customer.`,'ok',5000);
-     } else {
+     localStorage.removeItem('kfc_active_delivery'); 
+  } else {
     for(let i=0;i<4;i++){const el=document.getElementById(`p${i}`); if(el)el.classList.add('err');}
     pinBuf=''; setTimeout(updatePinDisplay,600);
     toast('Wrong PIN. Ask customer to check their SMS.','err');
@@ -1958,7 +1977,9 @@ function renderKitchen(){
     :'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
 }
 function kCard(o,type){   //Builds a single order card for the kitchen board (order index, type: new, cook or rdy)
-  const ageMins=Math.floor((Date.now()-new Date(o.paid_at))/60000); // calculates time in minuted that have passed since the customer paid
+  // use created_at as fallback for pending orders
+const baseTime = o.paid_at || o.created_at;
+const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   const urgent=ageMins>15&&type!=='rdy';   // two conditions: order waiting time more than 15min, order not in the ready column. Then the order is deemed urgent.
  const action={
   new: o.status==='pending'
@@ -2071,7 +2092,9 @@ function orderRow(o){
     <div class="or-r">
       <div class="or-p">${F.money(o.food_amount)}</div>
       <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
-      ${o.status==='pending' || o.status === 'awaiting_payment'?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>`:''}
+      ${!['paid','cooking','ready','delivered','cancelled'].includes(o.status) ? `
+  <button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" 
+    onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>` : ''}
     </div>
   </div>`;
 }
@@ -2382,12 +2405,16 @@ function startRiderRealtime(){
     })
     .subscribe();
 
-    supa.channel('order-chat-'+active0Id)
-  .on('broadcast',{event:'chat_request'},({payload})=>{
-    toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
-    playBeep();
-  })
-  .subscribe();
+    // use rider's active order
+const activeOrderId = riderState.activeOrder?.id;
+if(activeOrderId){
+  supa.channel('order-chat-'+activeOrderId)
+    .on('broadcast',{event:'chat_request'},({payload})=>{
+      toast(`💬 ${payload.customerName} wants to chat!`,'ok',6000);
+      playBeep();
+    })
+    .subscribe();
+}
 }
 
 // SUPABASE REALTIME — CUSTOMER ORDER TRACKING
@@ -2436,8 +2463,10 @@ function ensureChatSheet(){
 
 function openChat(orderId, myRole){
   ensureChatSheet();
-  chatOrderId=orderId; chatMyRole=myRole; chatMsgs=[];
-  renderChatMessages();
+  // restore existing messages for this order
+chatOrderId=orderId; chatMyRole=myRole;
+if(!chatMsgs[orderId]) chatMsgs[orderId]=[];
+renderChatMessages();
 
   // Quick-suggestion buttons (rider only)
   const qb=document.getElementById('chat-quick-btns');
@@ -2456,7 +2485,8 @@ function openChat(orderId, myRole){
   chatChannel=supa.channel('order-chat-'+orderId);
   chatChannel
     .on('broadcast',{event:'msg'},({payload})=>{
-      chatMsgs.push(payload);
+      chatMsgs[orderId] = chatMsgs[orderId] || [];
+      chatMsgs[orderId].push(payload);
       renderChatMessages();
       playBeep();
     })
@@ -2501,7 +2531,8 @@ async function sendChatMsg(){
     text,
     ts: Date.now()
   };
-  chatMsgs.push(msg);
+  if(!chatMsgs[chatOrderId]) chatMsgs[chatOrderId]=[];
+  chatMsgs[chatOrderId].push(msg);
   renderChatMessages();
   // Broadcast to the other side
   if(chatChannel){
@@ -2510,19 +2541,20 @@ async function sendChatMsg(){
 }
 
 function renderChatMessages(){
-  const el=document.getElementById('chat-msgs');
+  const el = document.getElementById('chat-msgs');
   if(!el) return;
-  if(!chatMsgs.length){
+  const msgs = chatMsgs[chatOrderId] || [];
+  if(!msgs.length){
     el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.82rem;padding:20px 0">No messages yet — say hello! 👋</div>';
     return;
   }
-  el.innerHTML=chatMsgs.map(m=>{
-    const isMine=m.role===chatMyRole;
-    const time=new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
+  el.innerHTML = msgs.map(m=>{
+    const isMine = m.role === chatMyRole;
+    const time = new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
     return `<div style="display:flex;flex-direction:column;align-items:${isMine?'flex-end':'flex-start'}">
       <div style="font-size:.68rem;color:var(--muted);margin-bottom:2px">${m.name} · ${time}</div>
       <div style="background:${isMine?'var(--red)':'var(--dark3)'};color:var(--white);padding:9px 13px;border-radius:${isMine?'14px 14px 2px 14px':'14px 14px 14px 2px'};max-width:80%;font-size:.87rem;word-break:break-word">${m.text}</div>
     </div>`;
   }).join('');
-  el.scrollTop=el.scrollHeight;
+  el.scrollTop = el.scrollHeight;
 }
