@@ -2279,11 +2279,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
   loadChatMsgs(); // restore chat history across sessions
 
+  // If a ?role= param is present, ALWAYS go to that role's login —
+  // never auto-restore a previous session. Lets staff open kitchen/rider/admin
+  // in a new tab without being hijacked by a saved customer (or other) session.
   const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole === 'kitchen'){ selectRole('kitchen'); return; }
-  if(urlRole === 'admin'){ screen('s-admin-login'); return; }
-  if(urlRole === 'rider'){ selectRole('rider'); return; }
+  if(urlRole === 'kitchen') { selectRole('kitchen');    return; }
+  if(urlRole === 'admin')   { screen('s-admin-login');  return; }
+  if(urlRole === 'rider')   { selectRole('rider');      return; }
+  if(urlRole === 'customer'){ selectRole('customer');   return; }
 
+  // No ?role= in URL — restore previous session as normal
   if(localStorage.getItem('kfc_kitchen')){
     role = 'kitchen'; launchKitchen(); return;
   }
