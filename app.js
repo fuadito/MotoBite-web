@@ -325,7 +325,7 @@ function selectRole(r){
  }
     
     setTimeout(() => {
-    const saved = localStorage.getItem('kfc_user');
+    const saved = localStorage.getItem('mb_user');
     if(saved){
         try {
             const u = JSON.parse(saved);
@@ -339,7 +339,7 @@ function selectRole(r){
                 }
             } else if(role === 'rider'){
                 const phoneEl = document.getElementById('f-phone');
-                const savedRider = localStorage.getItem('kfc_rider');
+                const savedRider = localStorage.getItem('mb_rider');
                 const rPhone = savedRider ? JSON.parse(savedRider).phone : u.phone;
                 if(phoneEl && rPhone){
                     const local = rPhone.startsWith('254') ? rPhone.slice(3) : rPhone;
@@ -639,7 +639,7 @@ async function authSubmit() {
  }
 
  if(!nameInput){
-   const saved = localStorage.getItem('kfc_user');
+   const saved = localStorage.getItem('mb_user');
    if(!saved){
      toast('No account found. Tap "Create Account" to sign up.','err');
      return reset();
@@ -666,11 +666,11 @@ async function authSubmit() {
  }
 
  // CORRECT — OTP only for new customers
-const isReturning = !!localStorage.getItem('kfc_user');
+const isReturning = !!localStorage.getItem('mb_user');
 
 if(isReturning){
   // Existing customer — skip OTP, log straight in
-  localStorage.setItem('kfc_user', JSON.stringify(user));
+  localStorage.setItem('mb_user', JSON.stringify(user));
   toast(`Welcome back, ${user.name}! 👋`,'ok');
   await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
   reset(); launchCustomer();
@@ -680,7 +680,7 @@ if(isReturning){
 // New customer — verify phone with OTP first
 btn.innerHTML='Continue →'; btn.disabled=false;
 sendOtpAndVerify(user.phone, async () => {
-  localStorage.setItem('kfc_user', JSON.stringify(user));
+  localStorage.setItem('mb_user', JSON.stringify(user));
   toast(`Account created! Welcome, ${user.name}! 🍗`,'ok');
   await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
   launchCustomer();
@@ -708,12 +708,12 @@ return;
             reset(); screen('s-landing'); return;
           }
           if(data.status === 'suspended'){
-            toast('Your account has been suspended. Contact KFC Narok on 0702 923 826.','err',8000);
+            toast('Your account has been suspended. Contact MotoBite support on 0702 923 826.','err',8000);
             reset(); screen('s-landing'); return;
           }
           // Approved rider — restore full state and go to dashboard
           riderState={...riderState,...data,phone:user.phone};
-          localStorage.setItem('kfc_rider',JSON.stringify({phone:user.phone}));
+          localStorage.setItem('mb_rider',JSON.stringify({phone:user.phone}));
           toast(`Welcome back, ${data.name}! 🏍️`,'ok');
           reset(); launchRider();
           return;
@@ -733,7 +733,7 @@ return;
           }
           // No account yet — go to registration steps
           riderState.phone = user.phone;
-          localStorage.setItem('kfc_rider', JSON.stringify({phone:user.phone}));
+          localStorage.setItem('mb_rider', JSON.stringify({phone:user.phone}));
           toast('Phone verified! Complete your registration 🏍️','ok');
           launchRider(); // launchRider checks !riderState.name → renderRiderReg
         });
@@ -744,7 +744,7 @@ return;
     if(!code){ toast('Enter the kitchen passcode','err'); return reset(); }
     const r=await apiFetch('/api/kitchen/verify',{method:'POST',body:{code}});
     if(!r?.ok){ toast('Wrong passcode — ask your manager','err'); return reset(); }
-    localStorage.setItem('kfc_kitchen','1');
+    localStorage.setItem('mb_kitchen','1');
     reset(); launchKitchen();
 
   } else if(role==='admin'){
@@ -765,7 +765,7 @@ function exitRole(){
   if(kInterval){ clearInterval(kInterval); kInterval=null; }
   if(_locInterval){ clearInterval(_locInterval); _locInterval=null; }
   riderState={name:'',phone:'',rating:0,deliveries:0,online:false,regStep:0,regData:{},activeOrder:null,collected:false,todayTrips:0,todayEarnings:0};
-  localStorage.removeItem('kfc_kitchen');
+  localStorage.removeItem('mb_kitchen');
   screen('s-landing');
 }
 
@@ -789,13 +789,13 @@ async function launchCustomer(){
     renderCats(); renderMenu('Brand New'); updateCartUI();
 
     // Restore active order on login
-      const savedOid = localStorage.getItem('kfc_active_order');
+      const savedOid = localStorage.getItem('mb_active_order');
     if(savedOid){
         const order = await apiFetch(`/api/orders/${savedOid}`);
         if(order && !['delivered','cancelled'].includes(order.status)){
             showTracking(savedOid);
         } else { 
-                   localStorage.removeItem('kfc_active_order');
+                   localStorage.removeItem('mb_active_order');
         }
     }
 }
@@ -1149,7 +1149,7 @@ function renderCartSheet(){
   <span>Delivery fee</span>
   <span class="nt" style="color:var(--orange);font-size:.75rem">⏳ Agreed with rider on assignment</span>
 </div>
-    <div class="srow tot"><span>Pay to KFC Till</span><span>${F.money(total)}</span></div>
+    <div class="srow tot"><span>Pay to Till</span><span>${F.money(total)}</span></div>
   </div>`;
   ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();cPanel('location')">Confirm Order →</button>
   <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
@@ -1165,36 +1165,19 @@ function removeCartItem(i){
     const btn=document.getElementById('loc-btn');
     const err=document.getElementById('loc-err-box');
     const ok=document.getElementById('loc-ok-box');
-    btn.innerHTML='<span class="spin"></span> Getting location...'; btn.disabled=true;
+    btn.innerHTML='<span class="spin"></span> Getting location...'; btn.disabled=true;  
     err.classList.add('hidden');
-    ok.classList.add('hidden');
-
-    // KFC Narok exact coordinates
-    const KFC_LAT = -1.0833, KFC_LNG = 35.8667;
-    // Max delivery radius — Narok and immediate surroundings only.
-    // 170km was too large: it accepted Nairobi/Ongata Rongai (100km away).
-    const MAX_KM = 50;
-
     navigator.geolocation.getCurrentPosition(async pos=>{
-      const {latitude:lat, longitude:lng, accuracy} = pos.coords;
-      const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
-
-      // Warn if GPS accuracy is poor (>500m) — likely to be wrong location
-      if(accuracy > 500){
-        err.textContent = `⚠️ GPS accuracy is low (±${Math.round(accuracy)}m). Move outdoors and try again for a more accurate location.`;
-        err.classList.remove('hidden');
-        btn.innerHTML='📍 Try Again'; btn.disabled=false;
-        return;
+      const {latitude:lat,longitude:lng}=pos.coords;
+      const dist=haversine(lat,lng,-1.0833,35.8667);
+      if(dist>170){
+          err.textContent=`❌ You're ${dist.toFixed(1)}km from MotoBite. We only deliver within 170km.`;
+          err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
       }
 
-      if(dist > MAX_KM){
-        err.textContent = `❌ Your location (${dist.toFixed(1)}km away) is outside our delivery area. We deliver within ${MAX_KM}km of KFC Narok.`;
-        err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
-      }
-
-      // Reverse geocode — get human-readable area name from coordinates
-      // Uses OpenStreetMap Nominatim, no API key needed
-      let areaName = 'Narok Town';
+       // Reverse geocode — get human-readable area name from coordinates
+      // Uses OpenStreetMap Nominatim ,no API key
+       let areaName = 'Narok Town';
       try {
         const geo = await fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
@@ -1202,56 +1185,21 @@ function removeCartItem(i){
         );
         const gd = await geo.json();
         const a = gd.address || {};
+        // Build area string from most specific to least specific
+        // e.g. "Narok Town", "Nakuru CBD", "Naivasha"
         areaName = a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
       } catch(e) {
         console.warn('Reverse geocode failed — using default area name');
       }
 
-      userLoc = {lat, lng, areaName};
-
-      // Show location details + ask customer to confirm it looks right
-      // This catches GPS drift (phone returning stale/wrong coordinates)
-      ok.innerHTML=`
-        <div class="loc-ok">
-          <div class="loc-ok-ico">📍</div>
-          <div style="flex:1">
-            <div class="loc-ok-t">Is this your location?</div>
-            <div class="loc-ok-s" style="font-size:.9rem;color:var(--white);font-weight:600;margin:3px 0">${areaName}</div>
-            <div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-          <button class="btn btn-ghost" onclick="document.getElementById('loc-ok-box').classList.add('hidden');document.getElementById('loc-btn').innerHTML='📍 Try Again';document.getElementById('loc-btn').disabled=false;document.getElementById('loc-btn').onclick=getLocation;">
-            ❌ Wrong location
-          </button>
-          <button class="btn btn-primary" onclick="confirmLocation()">
-            ✅ Yes, correct
-          </button>
-        </div>`;
+      userLoc={lat,lng,areaName};
+      ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from restaurant · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
       ok.classList.remove('hidden');
-      btn.style.display='none'; // hide the original button while confirming
+      btn.textContent='✅ Continue to Payment';
+      btn.onclick=goToPayment;
+      btn.disabled=false;
 
-    },
-    (geoErr)=>{
-      const msg = geoErr.code === 1
-        ? '❌ Location access denied. Enable GPS in your browser settings and try again.'
-        : '❌ Could not get your location. Move outdoors and try again.';
-      err.textContent = msg;
-      err.classList.remove('hidden');
-      btn.innerHTML='📍 Try Again'; btn.disabled=false;
-    },
-    {enableHighAccuracy:true, timeout:15000, maximumAge:0}); // maximumAge:0 forces fresh GPS fix
-}
-
-function confirmLocation(){
-  const ok = document.getElementById('loc-ok-box');
-  const btn = document.getElementById('loc-btn');
-  // Replace the confirm buttons with a success message
-  ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${userLoc.areaName} · ${userLoc.lat.toFixed(4)}, ${userLoc.lng.toFixed(4)}</div></div></div>`;
-  btn.style.display='block';
-  btn.textContent='✅ Continue to Payment';
-  btn.disabled=false;
-  btn.onclick=goToPayment;
+    },()=>{ err.textContent='❌ GPS access denied. Enable location and try again.'; err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; },{enableHighAccuracy:true,timeout:10000});
 }
 
 function goToPayment(){
@@ -1302,7 +1250,7 @@ if(!amountPaid || amountPaid < orderTotal){
 
   const oid=order.id;
   active0Id=oid;
-  localStorage.setItem('kfc_active_order',oid);
+  localStorage.setItem('mb_active_order',oid);
  
   // Show STK status box if the backend sent a push, otherwise keep manual instructions
     const stkBox=document.getElementById('stk-status');
@@ -1348,7 +1296,7 @@ async function confirmPayment(orderId) {
     
     // Update order status
     active0Id = orderId;
-    localStorage.setItem('kfc_active_order', orderId);
+    localStorage.setItem('mb_active_order', orderId);
     
     // Refresh tracking to show updated status
     showTracking(orderId);
@@ -1397,7 +1345,7 @@ async function renderTracking(oid) {
       <div class="empty" style="padding-top:60px">
         <div class="ei">📦</div>
         <h3>ORDER NOT FOUND</h3>
-        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact KFC Narok.</p>
+        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact MotoBite support.</p>
         <button class="btn btn-ghost" style="margin-top:16px" onclick="cPanel('menu')">← Back to Menu</button>
       </div>`;
     return;
@@ -1815,7 +1763,7 @@ function showRiderOrderAlert(o){
     let t=180;
     z.innerHTML=`<div class="o-alert">
     <div class="oa-top"><div class="oa-title">🔔 NEW ORDER!</div><div class="oa-timer" id="ot">${fmtTime(t)}</div></div>
-    <div class="oa-detail">📍 Collect: KFC Narok</div>
+    <div class="oa-detail">📍 Collect: MotoBite Restaurant</div>
     <div class="oa-detail">📍 Deliver to: ${o.customer_area}</div>
     <div class="oa-detail">💰 Your fee: Agree with the customer</div>
     <div class="oa-items">${(o.items||[]).map(i=>`• ${i.name}${i.note?` (${i.note})`:''}`).join('<br>')}</div>
@@ -1836,7 +1784,7 @@ function acceptOrder(){
             headers: { 'x-user-phone': riderState.phone || user.phone }
         });
     }
-    toast('Order accepted! Head to KFC Narok 🏍️','ok');
+    toast('Order accepted! Head to the restaurant 🏍️','ok');
     document.getElementById('r-alert-zone').innerHTML='';
     riderState.collected=false;
     rPanel('delivery', document.querySelector('[data-s="delivery"]'));
@@ -1862,10 +1810,10 @@ function renderRiderDelivery(){
         <span style="font-size:.7rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.08em">Active Delivery · ${o.order_number}</span>
       </div>
       <div class="receipt">
-        <div class="receipt-hdr">🧾 KFC NAROK COLLECTION RECEIPT</div>
+        <div class="receipt-hdr">🧾 MOTOBITE COLLECTION RECEIPT</div>
         <div>Order: <strong>${o.order_number}</strong></div>
          ${(o.items||[]).map(i=>`<div>• ${i.name}${i.chickenType?` <strong style="color:var(--red)">[${i.chickenType}]</strong>`:''}${i.note?` <span style="color:var(--orange)">(${i.note})</span>`:''}</div>`).join('')}
-        <div class="receipt-note">Show this screen to KFC staff at the counter</div>
+        <div class="receipt-note">Show this screen to restaurant staff at the counter</div>
       </div>
       <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.85rem">
         📍 Deliver to: <strong>${o.customer_area}</strong><br>
@@ -2278,7 +2226,7 @@ async function toggleMenuItem(id,el) {
 
 // RESTORE SESSION
 document.addEventListener('DOMContentLoaded', async () => {
-  const saved = localStorage.getItem('kfc_user');
+  const saved = localStorage.getItem('mb_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
 
   // Check URL for hidden role access — not shown on landing page
@@ -2301,14 +2249,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Restore sessions on page refresh ──────────────────────────────────────
 
   // Restore kitchen session
-  if(localStorage.getItem('kfc_kitchen')){
+  if(localStorage.getItem('mb_kitchen')){
     role = 'kitchen';
     launchKitchen();
     return;
   }
 
   // Restore customer session — takes priority over rider
-  // (prevents leftover kfc_rider from testing hijacking the customer landing)
+  // (prevents leftover mb_rider from testing hijacking the customer landing)
   if(user.name && user.phone){
     role = 'customer';
     launchCustomer();
@@ -2316,7 +2264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Restore rider session — only if no customer session exists
-  const savedRider = localStorage.getItem('kfc_rider');
+  const savedRider = localStorage.getItem('mb_rider');
   if(savedRider){
     try{
       const rd = JSON.parse(savedRider);
@@ -2330,10 +2278,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       } else {
         // Stale or invalid rider session — clear it
-        localStorage.removeItem('kfc_rider');
+        localStorage.removeItem('mb_rider');
       }
     }catch{
-      localStorage.removeItem('kfc_rider');
+      localStorage.removeItem('mb_rider');
     }
   }
 
