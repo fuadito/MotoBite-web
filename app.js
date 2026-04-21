@@ -24,7 +24,6 @@ let chatMyRole = null;
 let chatMsgs = {};
 let chatChannel = null;
 let _catObserver = null;
-let declinedRiders = new Set();
 
 // Calculate distance between two GPS coordinates in kilometers
 function haversine(lat1, lng1, lat2, lng2) {
@@ -782,14 +781,16 @@ async function launchCustomer(){
 
     renderCats(); renderMenu('Brand New'); updateCartUI();
 
-    // Restore active order on login
-      const savedOid = localStorage.getItem('kfc_active_order');
+    // Restore active order on login — always set active0Id so rating can submit
+    const savedOid = localStorage.getItem('kfc_active_order');
     if(savedOid){
+        active0Id = savedOid; // set early so submitRating has it even before tracking loads
         const order = await apiFetch(`/api/orders/${savedOid}`);
-        if(order && !['delivered','cancelled'].includes(order.status)){
-            showTracking(savedOid);
-        } else { 
-                   localStorage.removeItem('kfc_active_order');
+        if(order && order.status !== 'cancelled'){
+            showTracking(savedOid); // show tracking for all non-cancelled including delivered
+        } else if(!order || order.status === 'cancelled') {
+            active0Id = null;
+            localStorage.removeItem('kfc_active_order');
         }
     }
 }
@@ -1303,11 +1304,6 @@ async function confirmPayment(orderId) {
     toast(res?.error || '❌ Failed to confirm payment. Try again.', 'err');
     btn.innerHTML = '✅ I Have Paid';
     btn.disabled = false;
-
-    if (res?.success) {
-    document.getElementById('cart-float')?.classList.add('hidden'); // ADD
-    
-    }
   }
 }
 
@@ -1495,12 +1491,11 @@ async function selectRider(orderId, riderPhone, el) {
     body: { rider_phone: riderPhone }
   });
   
-    if (res?.success) {
-    toast('Rider notified! Waiting for response... 🚴', 'ok');
-    renderTracking(orderId);
-    // Customer waits — rider will chat back if interested
+  if (res?.success) {
+    toast('Rider assigned! They will contact you. 🚴', 'ok');
+    renderTracking(orderId); // Refresh to show assigned rider
   } else {
-    toast(res?.error || 'Failed. Try another rider .', 'err');
+    toast(res?.error || 'Failed to assign rider. Try again.', 'err');
     loadAvailableRiders(orderId);
   }
 }
@@ -1511,11 +1506,29 @@ function setRating(type,val){
 }
 // async used to communicate with backed to await API-fetch
 async function submitRating(){
-    if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; } //checks that both ratings have been set. foodR & riderR starts with 0, !foodR-if foodR = 0,(not yet rated). if either missing show an error, "return" stops the function, nothing submitted until both rated. 
-    await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}}); //sends both ratings to backend against the specific order ID. stored in supabase, foodR goes to restaurant, riderR goes to rider's profile. await means the function pause until backend responds before moving to next line.
-    const rc=document.getElementById('rating-card');
-    if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
-  toast('Rating submitted! Thank you 🙏','ok');
+    if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; }
+
+    // Recover active0Id from localStorage if it was lost on page refresh
+    if(!active0Id){
+      const saved = localStorage.getItem('kfc_active_order');
+      if(saved) active0Id = saved;
+    }
+    if(!active0Id){ toast('Could not find your order. Please contact support.','err'); return; }
+
+    const btn = document.querySelector('#rating-card .btn-primary');
+    if(btn){ btn.innerHTML='<span class="spin"></span>'; btn.disabled=true; }
+
+    const res = await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}});
+
+    if(res?.success){
+      const rc=document.getElementById('rating-card');
+      if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
+      toast('Rating submitted! Thank you 🙏','ok');
+      foodR=0; riderR=0; // reset so re-render doesn't re-enable submit
+    } else {
+      if(btn){ btn.innerHTML='Submit Rating'; btn.disabled=false; }
+      toast(res?.error || 'Could not submit rating — please try again','err');
+    }
 }     
 
 
@@ -1530,9 +1543,7 @@ async function launchRider(){
   if(!riderState.activeOrder){
     const saved = localStorage.getItem('kfc_active_delivery');
     if(saved){
-      try{ riderState.activeOrder = JSON.parse(saved); 
-           riderState.collected = false; // reset collected state
-      }catch{}
+      try{ riderState.activeOrder = JSON.parse(saved); }catch{}
     }
   }
 
@@ -1541,11 +1552,7 @@ async function launchRider(){
         renderRiderReg();
     } else {
         renderRiderHome();
-        // If has active order — go straight to delivery, skip the alert
-    if(riderState.activeOrder){
-      rPanel('delivery', document.querySelector('[data-s="delivery"]'));
     }
-  }
 }
 
 function rPanel(id,btn=null){
@@ -1759,7 +1766,7 @@ function renderRiderHome(){
       </div>
       <div class="stats2">
         <div class="sm"><div class="sm-v" id="r-trips">${riderState.todayTrips}</div><div class="sm-l">Today's Trips</div></div>
-        <div class="sm-v" id="r-earn">KES ${riderState.todayEarnings||0}</div><<div class="sm-l">Today's Earnings</div></div>
+        <div class="sm"><div class="sm-v" id="r-earn">KES ${riderState.todayTrips*100}</div><div class="sm-l">Today's Earnings</div></div>
         <div class="sm"><div class="sm-v">${riderState.deliveries}</div><div class="sm-l">Total Trips</div></div>
         <div class="sm"><div class="sm-v" style="color:var(--green)">${riderState.rating}</div><div class="sm-l">Rating</div></div>
       </div>
@@ -1786,60 +1793,24 @@ function showRiderOrderAlert(o){
     <div class="oa-top"><div class="oa-title">🔔 NEW ORDER!</div><div class="oa-timer" id="ot">${fmtTime(t)}</div></div>
     <div class="oa-detail">📍 Collect: KFC Narok</div>
     <div class="oa-detail">📍 Deliver to: ${o.customer_area}</div>
-    ${(o.location?.lat || o.customer_lat) ? `
-    <a href="https://www.google.com/maps/dir/?api=1&origin=-1.0833,35.8667&destination=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}"
-       target="_blank"
-       style="display:block;background:var(--dark3);border:1px solid var(--line2);color:var(--white);text-align:center;padding:8px;border-radius:8px;text-decoration:none;font-size:.8rem;margin:6px 0">
-      🗺️ Preview Route (KFC → Customer)
-    </a>` : ''}
-    <div class="oa-detail">💰 Agree delivery fee via chat</div>
+    <div class="oa-detail">💰 Your fee: Agree with the customer</div>
     <div class="oa-items">${(o.items||[]).map(i=>`• ${i.name}${i.note?` (${i.note})`:''}`).join('<br>')}</div>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openPreAcceptChat(${o.id})">💬 Chat with Customer First</button>
     <div class="oa-btns"><button class="btn-accept" onclick="acceptOrder()">✅ ACCEPT</button><button class="btn-decline" onclick="declineOrder()">Pass</button></div>
      </div>`;
-
-    // Subscribe to chat for this order BEFORE accepting
-  supa.channel('order-chat-'+o.id)
-    .on('broadcast',{event:'msg'},({payload})=>{
-      if(chatOrderId !== o.id){
-        toast(`💬 Customer: ${payload.text.substring(0,30)}...`,'ok',5000);
-        playBeep();
-      }
-    })
-    .subscribe();
-
     if(oTimer) clearInterval(oTimer);
     oTimer=setInterval(()=>{ t--; const el=document.getElementById('ot'); if(el)el.textContent=fmtTime(t); if(t<=0){clearInterval(oTimer);z.innerHTML='';riderState.activeOrder=null;toast('0rder expired - no response in time','warn');} },1000);
 }
 
-function openPreAcceptChat(orderId){
-  // Store the order temporarily so chat works before acceptance
-  if(!riderState.activeOrder) riderState.activeOrder = {id: orderId};
-  openChat(orderId, 'rider');
-}
 function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
 function acceptOrder(){
   if(oTimer) clearInterval(oTimer);
-  apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {method:'POST'});
+  const orderId = riderState.activeOrder?.id;
+  apiFetch(`/api/orders/${orderId}/accept`, {method:'POST'});
+  // Persist active order so it survives refresh
   localStorage.setItem('kfc_active_delivery', JSON.stringify(riderState.activeOrder));
-
-  // ADD — listen for chat requests on this specific order
-  const orderId = riderState.activeOrder.id;
-  supa.channel('order-chat-'+orderId)
-    .on('broadcast',{event:'chat_request'},({payload})=>{
-      toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
-      playBeep();
-    })
-    .on('broadcast',{event:'msg'},({payload})=>{
-      // Show notification if chat is not open
-      if(chatOrderId !== orderId){
-        toast(`💬 New message from customer`,'ok',4000);
-        playBeep();
-      }
-    })
-    .subscribe();
-
+  // Start chat listener now that we have an order — fixes Issue 8
+  startRiderChatListener(orderId);
   toast('Order accepted! Head to KFC Narok 🏍️','ok');
   document.getElementById('r-alert-zone').innerHTML='';
   riderState.collected=false;
@@ -1847,15 +1818,11 @@ function acceptOrder(){
 }
 
 function declineOrder(){
-  if(oTimer) clearInterval(oTimer);
-  document.getElementById('r-alert-zone').innerHTML='';
-  // ADD — tell backend this rider declined
-  if(riderState.activeOrder?.id){
-    apiFetch(`/api/orders/${riderState.activeOrder.id}/decline`, {method:'POST'});
-  }
-  riderState.activeOrder=null;
-  toast('Order passed');
-} 
+    if(oTimer) clearInterval(oTimer);
+    document.getElementById('r-alert-zone').innerHTML='';
+    riderState.activeOrder=null;
+    toast('Order passed');
+}
 
 function renderRiderDelivery(){
     const rc=document.getElementById('rider-content');
@@ -1877,33 +1844,8 @@ function renderRiderDelivery(){
       </div>
       <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.85rem">
         📍 Deliver to: <strong>${o.customer_area}</strong><br>
-        💰 Delivery fee: <strong style="color:var(--green)">${riderState.agreedFee ? `KES ${riderState.agreedFee} (agreed)` : 'Agree with customer'}</strong> - collect cash at door
+        💰 Delivery fee: <strong style="color:var(--green)">Agree with customer</strong> - collect cash at door
       </div>
-
-      ${(o.location?.lat || o.customer_lat) ? `
-      <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px">
-        <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.5px">📍 CUSTOMER LOCATION</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a href="https://www.google.com/maps/dir/?api=1&destination=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}"
-             target="_blank"
-             style="flex:1;background:var(--red);color:#fff;text-align:center;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem">
-            🗺️ Navigate (Google Maps)
-          </a>
-          <a href="https://maps.apple.com/?daddr=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}&dirflg=d"
-             target="_blank"
-             style="flex:1;background:var(--dark2);color:var(--white);text-align:center;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem;border:1px solid var(--line2)">
-            🍎 Apple Maps
-          </a>
-        </div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:6px;text-align:center">
-          ${(o.location?.lat||o.customer_lat).toFixed(5)}, ${(o.location?.lng||o.customer_lng).toFixed(5)}
-        </div>
-      </div>
-      ` : `
-      <div style="background:var(--dark3);border-radius:var(--r);padding:10px 12px;margin-bottom:12px;font-size:.8rem;color:var(--orange)">
-        ⚠️ No GPS coordinates — ask customer for their exact location via chat
-      </div>
-      `}
       <button class="btn btn-ghost btn-full" style="margin-top:8px"
           onclick="openChat(${o.id},'rider')">
           💬 Chat with Customer — Negotiate Fee
@@ -1959,12 +1901,7 @@ function markCollected(){
     document.querySelectorAll('#s-rider .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='home'));
     renderRiderHome();
     toast(`🎉 PIN correct! Collect delivery fee from customer.`,'ok',5000);
-    const agreedFee = riderState.agreedFee || parseInt(localStorage.getItem('kfc_agreed_fee')) || 0;
-riderState.todayEarnings = (riderState.todayEarnings || 0) + agreedFee;
-riderState.agreedFee = 0;
-localStorage.removeItem('kfc_agreed_fee');
-     localStorage.removeItem('kfc_active_delivery'); localStorage.removeItem('kfc_chat_'+riderState.activeOrder?.id);
-
+     localStorage.removeItem('kfc_active_delivery'); 
   } else {
     for(let i=0;i<4;i++){const el=document.getElementById(`p${i}`); if(el)el.classList.add('err');}
     pinBuf=''; setTimeout(updatePinDisplay,600);
@@ -2209,14 +2146,8 @@ async function markOrderPaid(num, id) {
 
 
 async function renderAdminRiders(){
-  // Fetch both pending AND approved riders
-  const [pendingData, approvedData] = await Promise.all([
-    apiFetch('/api/admin/riders/pending'),
-    apiFetch('/api/admin/riders/approved')
-  ]);
-
-  const pending  = pendingData  || [];
-  const approved = approvedData || [];
+  const data=await apiFetch('/api/admin/riders/pending');
+  const riders=data||DEMO_RIDERS;
 
   const getImgUrl = async (path) => {
     if(!path) return null;
@@ -2224,47 +2155,36 @@ async function renderAdminRiders(){
     return data?.signedUrl;
   };
 
-  const buildCard = async (r, isApproved) => {
-    const idUrl      = await getImgUrl(r.id_photo_url);
-    const licUrl     = await getImgUrl(r.license_photo_url);
-    const selfieUrl  = await getImgUrl(r.selfie_url);
+  const riderCards = await Promise.all(riders.map(async r => {
+    const idUrl = await getImgUrl(r.id_photo_url);
+    const licUrl = await getImgUrl(r.license_photo_url);
+    const selfieUrl = await getImgUrl(r.selfie_url);
     return `
       <div class="rider-rev" id="rr-${r.phone}">
         <div class="rr-top">
-          <div class="rr-av">${isApproved ? '🟢' : '👤'}</div>
+          <div class="rr-av">👤</div>
           <div>
             <div class="rr-name">${r.name||'Unknown'}</div>
-            <div class="rr-phone">${F.phone(r.phone)} · ${isApproved ? `⭐ ${r.rating||0} · ${r.total_deliveries||0} deliveries` : `Applied ${F.date(r.created_at)}`}</div>
+            <div class="rr-phone">${F.phone(r.phone)} · Applied ${F.date(r.created_at)}</div>
           </div>
         </div>
-        <div class="doc-row">
-          ${r.id_photo_url     ? `<div class="dc"><img src="${idUrl}"     style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">National ID</div></div>`   : '<div class="dc"><span class="dc-e">🪪</span>No ID</div>'}
-          ${r.license_photo_url? `<div class="dc"><img src="${licUrl}"     style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">License</div></div>`       : '<div class="dc"><span class="dc-e">🚗</span>No License</div>'}
-          ${r.selfie_url       ? `<div class="dc"><img src="${selfieUrl}"  style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">Selfie</div></div>`          : '<div class="dc"><span class="dc-e">🤳</span>No Selfie</div>'}
-        </div>
+      <div class="doc-row">
+    ${r.id_photo_url ? `<div class="dc"><img src="${idUrl}" style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">National ID</div></div>` : '<div class="dc"><span class="dc-e">🪪</span>No ID uploaded</div>'}
+    ${r.license_photo_url ? `<div class="dc"><img src="${licUrl}" style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">License</div></div>` : '<div class="dc"><span class="dc-e">🚗</span>No License uploaded</div>'}
+    ${r.selfie_url ? `<div class="dc"><img src="${selfieUrl}" style="width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"/><div style="font-size:.7rem;color:var(--muted);margin-top:4px">Selfie</div></div>` : '<div class="dc"><span class="dc-e">🤳</span>No Selfie uploaded</div>'}
+      </div>
         <div class="rr-btns">
-          ${isApproved
-            ? `<button class="btn btn-danger btn-full btn-sm" onclick="suspendRider('${r.phone}','${r.name}')">🚫 Suspend Rider</button>`
-            : `<button class="btn btn-green btn-full btn-sm" onclick="approveRider('${r.phone}')">✅ Approve Rider</button>
-               <button class="btn btn-danger btn-sm" onclick="rejectRider('${r.phone}')">Reject</button>`
-          }
+          <button class="btn btn-green btn-full btn-sm" onclick="approveRider('${r.phone}')">✅ Approve Rider</button>
+          <button class="btn btn-danger btn-sm" onclick="rejectRider('${r.phone}')">Reject</button>
         </div>
       </div>`;
-  };
+  }));
 
-  const pendingCards  = await Promise.all(pending.map(r  => buildCard(r, false)));
-  const approvedCards = await Promise.all(approved.map(r => buildCard(r, true)));
+  
+     document.getElementById('a-riders').innerHTML=riders.length
+    ?riderCards.join('')
+     :'<div class="empty"><div class="ei">✅</div><h3>NO PENDING APPLICATIONS</h3><p>All rider applications are reviewed</p></div>';
 
-  document.getElementById('a-riders').innerHTML = `
-    ${pending.length ? `
-      <div class="a-sec-t" style="margin-bottom:8px">⏳ PENDING APPROVAL (${pending.length})</div>
-      ${pendingCards.join('')}
-    ` : '<div class="empty" style="padding:16px 0"><div class="ei">✅</div><h3>NO PENDING APPLICATIONS</h3></div>'}
-    ${approved.length ? `
-      <div class="a-sec-t" style="margin-top:20px;margin-bottom:8px">🟢 ACTIVE RIDERS (${approved.length})</div>
-      ${approvedCards.join('')}
-    ` : ''}
-  `;
 }
 
 async function approveRider(phone) {
@@ -2272,28 +2192,17 @@ async function approveRider(phone) {
   const el=document.getElementById(`rr-${phone}`);
   if(el){ el.style.opacity='0'; el.style.transform='scale(.95)'; el.style.transition='.3s'; setTimeout(()=>el.remove(),300); }
   toast('✅ Rider approved and notified!','ok');
-  setTimeout(renderAdminRiders, 400); // refresh to show in active list
 }
 
 async function rejectRider(phone) {
   if(!confirm('Reject this rider application?')) return;
   await apiFetch('/api/admin/riders/suspend',{method:'POST',body:{phone}});
   const el=document.getElementById(`rr-${phone}`);
-  if(el){ el.style.opacity='0'; setTimeout(()=>el.remove(),300); }
-  toast('Rider application rejected','warn');
+  if(el) { el.style.opacity='0'; setTimeout(()=>el.remove(),300); }
+  toast('Rider rejected','warn');
 }
 
-async function suspendRider(phone, name) {
-  if(!confirm(`Suspend ${name}? They will receive an SMS and lose access immediately.`)) return;
-  const result = await apiFetch('/api/admin/riders/suspend',{method:'POST',body:{phone}});
-  if(result?.success){
-    const el=document.getElementById(`rr-${phone}`);
-    if(el){ el.style.opacity='0'; el.style.transform='scale(.95)'; el.style.transition='.3s'; setTimeout(()=>el.remove(),300); }
-    toast(`🚫 ${name} suspended until further notice`,'warn');
-  } else {
-    toast('Could not suspend rider — try again','err');
-  }
-}
+
 async function renderAdminMenu() {
     const data=await apiFetch('/api/menu');
     const items=data?Object.values(data).flat():Object.entries(MENU).flatMap(([c,items])=>items.map(i=>({...i,category:c,available:true})));
@@ -2437,10 +2346,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // onAuthStateChange lives OUTSIDE DOMContentLoaded at the top level
 supa.auth.onAuthStateChange((event, session) => {
-  // don't override if user arrived via ?role= URL
-    const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole) return; // let URL role take priority
-  
   if(event === 'SIGNED_IN' && role !== 'admin'){
     role = 'admin';
     launchAdmin();
@@ -2580,7 +2485,15 @@ function startOrderRealtime(oid){
     },()=>{
       renderTracking(oid);
     })
-    // Background chat listener — notifies customer when rider sends a msg while chat is closed
+    // Notifies customer when rider opens the chat (rider→customer direction)
+    .on('broadcast',{event:'chat_request'},({payload})=>{
+      if(!document.getElementById('chat-sheet')?.classList.contains('on')){
+        const name = payload.riderName || 'Your rider';
+        toast(`💬 ${name} wants to chat about the delivery fee!`, 'ok', 6000);
+        playBeep();
+      }
+    })
+    // Background msg listener — notifies customer when rider sends a msg while chat is closed
     .on('broadcast',{event:'msg'},({payload})=>{
       if(!chatMsgs[oid]) chatMsgs[oid]=[];
       chatMsgs[oid].push(payload);
@@ -2637,37 +2550,22 @@ function ensureChatSheet(){
 
 function openChat(orderId, myRole){
   ensureChatSheet();
-  chatOrderId=orderId; chatMyRole=myRole;
-  // Restore from localStorage if not in memory
-  if(!chatMsgs[orderId]){
-    try{
-      const saved = localStorage.getItem('kfc_chat_'+orderId);
-      chatMsgs[orderId] = saved ? JSON.parse(saved) : [];
-    }catch{ chatMsgs[orderId] = []; }
-  }
-  renderChatMessages();
+  // restore existing messages for this order
+chatOrderId=orderId; chatMyRole=myRole;
+if(!chatMsgs[orderId]) chatMsgs[orderId]=[];
+renderChatMessages();
 
   // Quick-suggestion buttons (rider only)
   const qb=document.getElementById('chat-quick-btns');
   if(myRole==='rider'){
     qb.innerHTML=['KES 50','KES 100','KES 150','KES 200','KES 300','KES 500'].map(fee=>
       `<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="quickFee('${fee}')">${fee}</button>`
-    ).join('') +  `<button class="btn btn-primary btn-sm" style="font-size:.75rem;margin-top:6px;width:100%" 
-    onclick="setAgreedFee()">✅ Fee Agreed — Set Amount</button>`;
+    ).join('');
   } else {
     qb.innerHTML=['Sounds good! ✅','Can you do less?','KES 100 is fine','I accept 👍'].map(t=>
       `<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="quickFee('${t}')">${t}</button>`
     ).join('');
   }
-
-  function setAgreedFee(){
-  const fee = prompt('Enter the agreed delivery fee (KES):');
-  if(!fee || isNaN(parseInt(fee))) return;
-  riderState.agreedFee = parseInt(fee);
-  localStorage.setItem('kfc_agreed_fee', fee);
-  toast(`Fee set: KES ${fee} ✅`,'ok');
-  closeChat();
-}
 
   // Realtime broadcast channel for this order chat
   if(chatChannel){ chatChannel.unsubscribe().catch(()=>{}); }
@@ -2681,15 +2579,23 @@ function openChat(orderId, myRole){
     })
     .subscribe();
 
-    if(myRole === 'customer'){
-  // Notify the rider a customer wants to chat
+  // Notify the OTHER party that someone opened the chat
   setTimeout(async()=>{
-    await chatChannel.send({
-      type:'broadcast', event:'chat_request',
-      payload:{ orderId, customerName: user.name }
-    });
+    if(myRole === 'customer'){
+      // Customer → notify rider
+      await chatChannel.send({
+        type:'broadcast', event:'chat_request',
+        payload:{ orderId, from:'customer', customerName: user.name }
+      });
+    } else if(myRole === 'rider'){
+      // Rider → notify customer via the order-track channel they're subscribed to
+      const trackChannel = supa.channel('order-track-'+orderId);
+      await trackChannel.send({
+        type:'broadcast', event:'chat_request',
+        payload:{ orderId, from:'rider', riderName: riderState.name || 'Your rider' }
+      });
+    }
   }, 500);
-  } // end if myRole==='customer'
 
   document.getElementById('chat-ov').classList.add('on');
   document.getElementById('chat-sheet').classList.add('on');
@@ -2722,8 +2628,6 @@ async function sendChatMsg(){
   };
   if(!chatMsgs[chatOrderId]) chatMsgs[chatOrderId]=[];
   chatMsgs[chatOrderId].push(msg);
-  // After chatMsgs[orderId].push(msg) in sendChatMsg() and the broadcast listener, add:
-localStorage.setItem('kfc_chat_'+chatOrderId, JSON.stringify(chatMsgs[chatOrderId]));
   saveChatMsgs(); // persist before broadcast
   renderChatMessages();
   // Broadcast to the other side
