@@ -390,49 +390,30 @@ function showCustomerLogin() {
 async function loginCustomer() {
   const phone = document.getElementById('f-phone')?.value.trim();
 
-  if(!phone || phone.length < 9){
+  if(!phone || phone.replace(/\D/g,'').length < 9){
     toast('Please enter your phone number','err');
     return;
   }
 
-  const fullPhone = `254${phone}`;
+  const digits = phone.replace(/\D/g,'');
+  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
 
-  // Check if user exists
-  const checkRes = await apiFetch('/api/auth/login', {
-    method: 'POST',
-    body: { phone: fullPhone }
-  });
+  // Look up customer directly — no OTP required until production AT is enabled
+  const { data: customer } = await supa
+    .from('customers')
+    .select('*')
+    .eq('phone', fullPhone)
+    .maybeSingle();
 
-  if(checkRes?.needsRegistration){
-    toast('No account found. Please register first.','err');
+  if(customer){
+    user = { name: customer.name, phone: customer.phone };
+    localStorage.setItem('mb_user', JSON.stringify(user));
+    toast(`Welcome back, ${customer.name}! 👋`, 'ok');
+    launchCustomer();
+  } else {
+    toast('No account found. Please create one first.','err');
     setTimeout(() => showCustomerRegister(), 1500);
-    return;
   }
-
-  if(!checkRes?.success){
-    toast(checkRes?.error || 'Login failed','err');
-    return;
-  }
-
-  // Send OTP for verification
-  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
-    // OTP verified - fetch user data
-    const { data: customer } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('phone', verifiedPhone)
-      .single();
-
-    if(customer){
-      localStorage.setItem('userPhone', customer.phone);
-      localStorage.setItem('userName', customer.name);
-
-      toast(`Welcome back, ${customer.name}! 🎉`, 'ok');
-      showMenu();
-    } else {
-      toast('Could not load account data','err');
-    }
-  });
 }
 
 // Customer Registration
@@ -480,34 +461,22 @@ async function registerCustomer() {
     return;
   }
 
-  const fullPhone = `254${phone}`;
+  const digits = phone.replace(/\D/g,'');
+  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
 
-  // Save name temporarily
-  localStorage.setItem('temp_name', name);
+  // Register directly — no OTP required until production AT is enabled
+  const res = await apiFetch('/api/customer/login', {
+    method: 'POST',
+    body: { phone: fullPhone, name }
+  });
 
-  // Send OTP and verify
-  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
-    // OTP verified - complete registration
-    const savedName = localStorage.getItem('temp_name');
-    
-    const res = await apiFetch('/api/auth/register', {
-      method: 'POST',
-      body: { phone: verifiedPhone, name: savedName }
-    });
-
-    if(res?.success){
-      // Save user data
-      localStorage.setItem('userPhone', verifiedPhone);
-      localStorage.setItem('userName', savedName);
-      localStorage.removeItem('temp_name');
-
-      toast(`Welcome to MotoBite, ${savedName}! 🎉`, 'ok');
-      
-      // Go to menu
-      showMenu();
-    } else {
-      toast(res?.error || 'Registration failed','err');
-    }
+  if(res){
+    user = { name, phone: fullPhone };
+    localStorage.setItem('mb_user', JSON.stringify(user));
+    toast(`Welcome to MotoBite, ${name}! 🎉`, 'ok');
+    launchCustomer();
+  } else {
+    toast('Registration failed — check your connection and try again','err');
   });
 }
 
@@ -622,9 +591,6 @@ async function verifyOtp() {
 async function authSubmit() {
     const btn=document.getElementById('auth-btn');
 
-    // If we're in OTP verification mode, route to verifyOtp instead
-    if(window._otpMode){ verifyOtp(); return; }
-
     btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
     const reset =()=>{ btn.innerHTML='Continue →'; btn.disabled=false; };
 
@@ -677,14 +643,11 @@ if(isReturning){
   return;
 }
 
-// New customer — verify phone with OTP first
-btn.innerHTML='Continue →'; btn.disabled=false;
-sendOtpAndVerify(user.phone, async () => {
-  localStorage.setItem('mb_user', JSON.stringify(user));
-  toast(`Account created! Welcome, ${user.name}! 🍗`,'ok');
-  await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
-  launchCustomer();
-});
+// New customer — save directly, no OTP until production AT is enabled
+localStorage.setItem('mb_user', JSON.stringify(user));
+toast(`Account created! Welcome, ${user.name}! 🍗`,'ok');
+await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
+reset(); launchCustomer();
 return;
 
 
