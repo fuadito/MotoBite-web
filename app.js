@@ -21,7 +21,7 @@ let kOrders = [];
 let kDone = 0;
 let chatOrderId = null;
 let chatMyRole = null;
-let chatMsgs = {};
+let chatMsgs = [];
 let chatChannel = null;
 let _catObserver = null;
 
@@ -259,7 +259,7 @@ const F = {
     money: a=>`KES ${Number(a).toLocaleString()}`,
     date: d=>new Date(d).toLocaleString('en-KE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
     phone: p=>{ const l=p.startsWith('254')?'0'+p.slice(3):p; return l.replace(/(\d{4})(\d{3})(\d{3})/,'$1 $2 $3'); },
-    norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?`+${d}`:d.startsWith('0')?`+254${d.slice(1)}`:`+254${d}`; },
+    norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?d:d.startsWith('0')?'254'+d.slice(1):'254'+d; },
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
     status: s=>({pending:'Awaiting payment',awaiting_payment:'Awaiting payment', paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
     badge: s=>({pending:'b-muted', awaiting_payment:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
@@ -390,31 +390,51 @@ function showCustomerLogin() {
 async function loginCustomer() {
   const phone = document.getElementById('f-phone')?.value.trim();
 
-  if(!phone || phone.replace(/\D/g,'').length < 9){
+  if(!phone || phone.length < 9){
     toast('Please enter your phone number','err');
     return;
   }
 
-  const digits = phone.replace(/\D/g,'');
-  const fullPhone = digits.startsWith('254') ? `+${digits}` : `+254${digits}`;
+  const fullPhone = `254${phone}`;
 
-  // Look up customer directly — no OTP needed for returning users
-  const { data: customer } = await supa
-    .from('customers')
-    .select('*')
-    .eq('phone', fullPhone)
-    .maybeSingle();
+  // Check if user exists
+  const checkRes = await apiFetch('/api/auth/login', {
+    method: 'POST',
+    body: { phone: fullPhone }
+  });
 
-  if(customer){
-    user = { name: customer.name, phone: customer.phone };
-    localStorage.setItem('kfc_user', JSON.stringify(user));
-    toast(`Welcome back, ${customer.name}! 👋`, 'ok');
-    launchCustomer();
-  } else {
-    toast('No account found. Please create one.','err');
+  if(checkRes?.needsRegistration){
+    toast('No account found. Please register first.','err');
     setTimeout(() => showCustomerRegister(), 1500);
+    return;
   }
+
+  if(!checkRes?.success){
+    toast(checkRes?.error || 'Login failed','err');
+    return;
+  }
+
+  // Send OTP for verification
+  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
+    // OTP verified - fetch user data
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone', verifiedPhone)
+      .single();
+
+    if(customer){
+      localStorage.setItem('userPhone', customer.phone);
+      localStorage.setItem('userName', customer.name);
+
+      toast(`Welcome back, ${customer.name}! 🎉`, 'ok');
+      showMenu();
+    } else {
+      toast('Could not load account data','err');
+    }
+  });
 }
+
 // Customer Registration
 function showCustomerRegister() {
   document.getElementById('at').textContent = 'CREATE ACCOUNT';
@@ -460,10 +480,7 @@ async function registerCustomer() {
     return;
   }
 
-// CORRECT — consistent with rest of app
-const fullPhone = phone.startsWith('0') 
-  ? `+254${phone.slice(1)}` 
-  : `+254${phone}`;
+  const fullPhone = `254${phone}`;
 
   // Save name temporarily
   localStorage.setItem('temp_name', name);
@@ -479,13 +496,15 @@ const fullPhone = phone.startsWith('0')
     });
 
     if(res?.success){
-      // Save user data using the same kfc_user key the rest of the app reads
-      user = { name: savedName, phone: verifiedPhone };
-      localStorage.setItem('kfc_user', JSON.stringify(user));
+      // Save user data
+      localStorage.setItem('userPhone', verifiedPhone);
+      localStorage.setItem('userName', savedName);
       localStorage.removeItem('temp_name');
 
       toast(`Welcome to MotoBite, ${savedName}! 🎉`, 'ok');
-      launchCustomer();
+      
+      // Go to menu
+      showMenu();
     } else {
       toast(res?.error || 'Registration failed','err');
     }
@@ -501,11 +520,6 @@ function showRiderSignIn(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Sign In →'; }
-
-    // ADD — hide back/cancel for rider screens
-  document.querySelector('.auth-back')?.style.setProperty('display','none');
-  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
-
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   // Mark as sign-in mode so authSubmit knows not to create a new account
@@ -519,11 +533,6 @@ function showRiderRegister(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Register →'; }
-
-    // ADD — hide back/cancel for rider screens
-  document.querySelector('.auth-back')?.style.setProperty('display','none');
-  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
-
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   window._riderMode = 'register';
@@ -684,7 +693,7 @@ return;
      else if(role==='rider'){
  const raw=document.getElementById('f-phone')?.value.trim();
         if(!raw||raw.replace(/\D/g,'').length<9){ toast('Enter a valid phone number','err'); return reset(); }
-        user.phone = F.norm(raw);
+        user.phone=F.norm(raw);
 
         // ── SIGN IN mode — no OTP needed, just look up their account ──────
         if(window._riderMode === 'signin'){
@@ -744,21 +753,19 @@ return;
   }
 }
 
+
+
+
+function goLanding(){
+    screen('s-landing');
+}
 function exitRole(){
   role=null; cart=[]; active0Id=null; foodR=0; riderR=0;
   kDone=0; kOrders=[];
   if(kInterval){ clearInterval(kInterval); kInterval=null; }
   if(_locInterval){ clearInterval(_locInterval); _locInterval=null; }
-  if(_clockInterval){ clearInterval(_clockInterval); _clockInterval=null; }
   riderState={name:'',phone:'',rating:0,deliveries:0,online:false,regStep:0,regData:{},activeOrder:null,collected:false,todayTrips:0,todayEarnings:0};
   localStorage.removeItem('kfc_kitchen');
-
-  // If user arrived via ?role= URL — return to that role's login, not landing
-  const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole === 'kitchen'){ selectRole('kitchen'); return; }
-  if(urlRole === 'rider'){   selectRole('rider');   return; }
-  if(urlRole === 'admin'){   screen('s-admin-login'); return; }
-
   screen('s-landing');
 }
 
@@ -781,16 +788,14 @@ async function launchCustomer(){
 
     renderCats(); renderMenu('Brand New'); updateCartUI();
 
-    // Restore active order on login — always set active0Id so rating can submit
-    const savedOid = localStorage.getItem('kfc_active_order');
+    // Restore active order on login
+      const savedOid = localStorage.getItem('kfc_active_order');
     if(savedOid){
-        active0Id = savedOid; // set early so submitRating has it even before tracking loads
         const order = await apiFetch(`/api/orders/${savedOid}`);
-        if(order && order.status !== 'cancelled'){
-            showTracking(savedOid); // show tracking for all non-cancelled including delivered
-        } else if(!order || order.status === 'cancelled') {
-            active0Id = null;
-            localStorage.removeItem('kfc_active_order');
+        if(order && !['delivered','cancelled'].includes(order.status)){
+            showTracking(savedOid);
+        } else { 
+                   localStorage.removeItem('kfc_active_order');
         }
     }
 }
@@ -1160,19 +1165,36 @@ function removeCartItem(i){
     const btn=document.getElementById('loc-btn');
     const err=document.getElementById('loc-err-box');
     const ok=document.getElementById('loc-ok-box');
-    btn.innerHTML='<span class="spin"></span> Getting location...'; btn.disabled=true;  
+    btn.innerHTML='<span class="spin"></span> Getting location...'; btn.disabled=true;
     err.classList.add('hidden');
+    ok.classList.add('hidden');
+
+    // KFC Narok exact coordinates
+    const KFC_LAT = -1.0833, KFC_LNG = 35.8667;
+    // Max delivery radius — Narok and immediate surroundings only.
+    // 170km was too large: it accepted Nairobi/Ongata Rongai (100km away).
+    const MAX_KM = 50;
+
     navigator.geolocation.getCurrentPosition(async pos=>{
-      const {latitude:lat,longitude:lng}=pos.coords;
-      const dist=haversine(lat,lng,-1.0907,35.8710);
-      if(dist>110){
-          err.textContent=`❌ You're ${dist.toFixed(1)}km from KFC Narok. We only deliver within 110km.`;
-          err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
+      const {latitude:lat, longitude:lng, accuracy} = pos.coords;
+      const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
+
+      // Warn if GPS accuracy is poor (>500m) — likely to be wrong location
+      if(accuracy > 500){
+        err.textContent = `⚠️ GPS accuracy is low (±${Math.round(accuracy)}m). Move outdoors and try again for a more accurate location.`;
+        err.classList.remove('hidden');
+        btn.innerHTML='📍 Try Again'; btn.disabled=false;
+        return;
       }
 
-       // Reverse geocode — get human-readable area name from coordinates
-      // Uses OpenStreetMap Nominatim ,no API key
-       let areaName = 'Narok Town';
+      if(dist > MAX_KM){
+        err.textContent = `❌ Your location (${dist.toFixed(1)}km away) is outside our delivery area. We deliver within ${MAX_KM}km of KFC Narok.`;
+        err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
+      }
+
+      // Reverse geocode — get human-readable area name from coordinates
+      // Uses OpenStreetMap Nominatim, no API key needed
+      let areaName = 'Narok Town';
       try {
         const geo = await fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
@@ -1180,22 +1202,56 @@ function removeCartItem(i){
         );
         const gd = await geo.json();
         const a = gd.address || {};
-        // Build area string from most specific to least specific
-        // e.g. "Narok Town", "Nakuru CBD", "Naivasha"
-        // CORRECT — add township before suburb since Narok uses township
-        areaName = a.township || a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
+        areaName = a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
       } catch(e) {
         console.warn('Reverse geocode failed — using default area name');
       }
 
-      userLoc={lat,lng,areaName};
-      ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
-      ok.classList.remove('hidden');
-      btn.textContent='✅ Continue to Payment';
-      btn.onclick=goToPayment;
-      btn.disabled=false;
+      userLoc = {lat, lng, areaName};
 
-    },()=>{ err.textContent='❌ GPS access denied. Enable location and try again.'; err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; },{enableHighAccuracy:true,timeout:10000});
+      // Show location details + ask customer to confirm it looks right
+      // This catches GPS drift (phone returning stale/wrong coordinates)
+      ok.innerHTML=`
+        <div class="loc-ok">
+          <div class="loc-ok-ico">📍</div>
+          <div style="flex:1">
+            <div class="loc-ok-t">Is this your location?</div>
+            <div class="loc-ok-s" style="font-size:.9rem;color:var(--white);font-weight:600;margin:3px 0">${areaName}</div>
+            <div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+          <button class="btn btn-ghost" onclick="document.getElementById('loc-ok-box').classList.add('hidden');document.getElementById('loc-btn').innerHTML='📍 Try Again';document.getElementById('loc-btn').disabled=false;document.getElementById('loc-btn').onclick=getLocation;">
+            ❌ Wrong location
+          </button>
+          <button class="btn btn-primary" onclick="confirmLocation()">
+            ✅ Yes, correct
+          </button>
+        </div>`;
+      ok.classList.remove('hidden');
+      btn.style.display='none'; // hide the original button while confirming
+
+    },
+    (geoErr)=>{
+      const msg = geoErr.code === 1
+        ? '❌ Location access denied. Enable GPS in your browser settings and try again.'
+        : '❌ Could not get your location. Move outdoors and try again.';
+      err.textContent = msg;
+      err.classList.remove('hidden');
+      btn.innerHTML='📍 Try Again'; btn.disabled=false;
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0}); // maximumAge:0 forces fresh GPS fix
+}
+
+function confirmLocation(){
+  const ok = document.getElementById('loc-ok-box');
+  const btn = document.getElementById('loc-btn');
+  // Replace the confirm buttons with a success message
+  ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${userLoc.areaName} · ${userLoc.lat.toFixed(4)}, ${userLoc.lng.toFixed(4)}</div></div></div>`;
+  btn.style.display='block';
+  btn.textContent='✅ Continue to Payment';
+  btn.disabled=false;
+  btn.onclick=goToPayment;
 }
 
 function goToPayment(){
@@ -1255,14 +1311,12 @@ if(!amountPaid || amountPaid < orderTotal){
     // STK push was sent — highlight the phone prompt
     if(stkBox)  stkBox.style.display='block';
     if(manualPay) manualPay.style.display='none';
-    cart = []; updateCartUI(); // clear cart when STK push sent
-    btn.innerHTML='📱 Waiting for M-Pesa payment...'; btn.disabled=true;
+    btn.innerHTML='📱 q1  Waiting for M-Pesa payment...'; btn.disabled=true;
     toast('Check your phone — M-Pesa prompt sent! 📱','ok',6000);
   } else {
     // STK not yet live — manual payment flow
 btn.innerHTML = '✅ Confirm Payment';
 btn.disabled = false;
-enableEnterKey('auth-btn');
 // Change button to confirm payment instead of creating new order
 btn.onclick = () => confirmPayment(oid);
 toast('Order placed! Pay via M-Pesa, then click "Confirm Payment" 📱', 'ok', 5000);
@@ -1272,8 +1326,7 @@ cart = [];
 updateCartUI();
 showTracking(oid);
 
-  } // end else
-} // end initPay
+}
 
 // Customer confirms they have paid via M-Pesa
 async function confirmPayment(orderId) {
@@ -1292,12 +1345,11 @@ async function confirmPayment(orderId) {
   
   if (res?.success) {
     toast('✅ Payment confirmed! Your order is being prepared.', 'ok');
-    // Clear cart and hide float so "View Order" button disappears
-    cart = [];
-    updateCartUI();
+    
     // Update order status
     active0Id = orderId;
     localStorage.setItem('kfc_active_order', orderId);
+    
     // Refresh tracking to show updated status
     showTracking(orderId);
   } else {
@@ -1310,10 +1362,6 @@ async function confirmPayment(orderId) {
 function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
-
-      // ADD — hide cart float once order is placed
-  document.getElementById('cart-float')?.classList.add('hidden');
-
     renderTracking(oid);
     startOrderRealtime(oid); // FIX: get instant status updates instead of waiting for next poll
     const iv=setInterval(()=>renderTracking(oid),12000);
@@ -1419,6 +1467,9 @@ async function renderTracking(oid) {
       `}
       ${riderSection}
       ${assignedRider}
+      ${['pending','paid','cooking','ready','rider_assigned','picked_up'].includes(o.status) ? `
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
+      ` : ''}
       <div class="card">
         <div class="card-t">ORDER SUMMARY</div>
         ${(o.items||[]).map(i => `
@@ -1506,47 +1557,20 @@ function setRating(type,val){
 }
 // async used to communicate with backed to await API-fetch
 async function submitRating(){
-    if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; }
-
-    // Recover active0Id from localStorage if it was lost on page refresh
-    if(!active0Id){
-      const saved = localStorage.getItem('kfc_active_order');
-      if(saved) active0Id = saved;
-    }
-    if(!active0Id){ toast('Could not find your order. Please contact support.','err'); return; }
-
-    const btn = document.querySelector('#rating-card .btn-primary');
-    if(btn){ btn.innerHTML='<span class="spin"></span>'; btn.disabled=true; }
-
-    const res = await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}});
-
-    if(res?.success){
-      const rc=document.getElementById('rating-card');
-      if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
-      toast('Rating submitted! Thank you 🙏','ok');
-      foodR=0; riderR=0; // reset so re-render doesn't re-enable submit
-    } else {
-      if(btn){ btn.innerHTML='Submit Rating'; btn.disabled=false; }
-      toast(res?.error || 'Could not submit rating — please try again','err');
-    }
+    if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; } //checks that both ratings have been set. foodR & riderR starts with 0, !foodR-if foodR = 0,(not yet rated). if either missing show an error, "return" stops the function, nothing submitted until both rated. 
+    await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}}); //sends both ratings to backend against the specific order ID. stored in supabase, foodR goes to restaurant, riderR goes to rider's profile. await means the function pause until backend responds before moving to next line.
+    const rc=document.getElementById('rating-card');
+    if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
+  toast('Rating submitted! Thank you 🙏','ok');
 }     
 
 
 
 // RIDER APP
 
-async function launchRider(){
+function launchRider(){
     screen('s-rider');
     startRiderRealtime(); // FIX: subscribe to dispatch broadcasts as soon as rider logs in
-
-     // ADD — restore active delivery if rider refreshes mid-delivery
-  if(!riderState.activeOrder){
-    const saved = localStorage.getItem('kfc_active_delivery');
-    if(saved){
-      try{ riderState.activeOrder = JSON.parse(saved); }catch{}
-    }
-  }
-
     if(!riderState.name){
         riderState.regStep=0;
         renderRiderReg();
@@ -1804,17 +1828,18 @@ function showRiderOrderAlert(o){
 function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
 function acceptOrder(){
-  if(oTimer) clearInterval(oTimer);
-  const orderId = riderState.activeOrder?.id;
-  apiFetch(`/api/orders/${orderId}/accept`, {method:'POST'});
-  // Persist active order so it survives refresh
-  localStorage.setItem('kfc_active_delivery', JSON.stringify(riderState.activeOrder));
-  // Start chat listener now that we have an order — fixes Issue 8
-  startRiderChatListener(orderId);
-  toast('Order accepted! Head to KFC Narok 🏍️','ok');
-  document.getElementById('r-alert-zone').innerHTML='';
-  riderState.collected=false;
-  rPanel('delivery', document.querySelector('[data-s="delivery"]'));
+    if(oTimer) clearInterval(oTimer);
+    // FIX: notify the backend so the order is assigned in the DB and no other rider can take it
+    if(riderState.activeOrder?.id){
+        apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {
+            method: 'POST',
+            headers: { 'x-user-phone': riderState.phone || user.phone }
+        });
+    }
+    toast('Order accepted! Head to KFC Narok 🏍️','ok');
+    document.getElementById('r-alert-zone').innerHTML='';
+    riderState.collected=false;
+    rPanel('delivery', document.querySelector('[data-s="delivery"]'));
 }
 
 function declineOrder(){
@@ -1850,12 +1875,9 @@ function renderRiderDelivery(){
           onclick="openChat(${o.id},'rider')">
           💬 Chat with Customer — Negotiate Fee
       </button>
-    ${riderState.collected
-  ? `<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
-  : riderState.activeOrder?.status === 'paid' || riderState.activeOrder?.status === 'rider_assigned'
-    ? `<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`
-    : `<div style="text-align:center;padding:10px;color:var(--orange);font-size:.85rem">⏳ Awaiting payment confirmation from admin</div>`
-}
+      ${riderState.collected
+        ?`<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
+        :`<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`}
     </div>
   </div>`;
 }
@@ -1901,8 +1923,7 @@ function markCollected(){
     document.querySelectorAll('#s-rider .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='home'));
     renderRiderHome();
     toast(`🎉 PIN correct! Collect delivery fee from customer.`,'ok',5000);
-     localStorage.removeItem('kfc_active_delivery'); 
-  } else {
+     } else {
     for(let i=0;i<4;i++){const el=document.getElementById(`p${i}`); if(el)el.classList.add('err');}
     pinBuf=''; setTimeout(updatePinDisplay,600);
     toast('Wrong PIN. Ask customer to check their SMS.','err');
@@ -1949,8 +1970,7 @@ function startLocTracking(){
 
 // KITCHEN APP
 let kInterval=null;
-let _locInterval=null;
-let _clockInterval=null; // FIX: track location interval so it can be cleared on re-toggle
+let _locInterval=null; // FIX: track location interval so it can be cleared on re-toggle
 
 function launchKitchen(){
   screen('s-kitchen');
@@ -1963,12 +1983,11 @@ function launchKitchen(){
 }
 
 function startClock(){
-  if(_clockInterval){ clearInterval(_clockInterval); _clockInterval=null; }
   const tick=()=>{
     const el=document.getElementById('k-clock');
     if(el) el.textContent=new Date().toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Africa/Nairobi'});
   };
-  tick(); _clockInterval=setInterval(tick,1000);
+  tick(); setInterval(tick,1000);
 }
 
 async function pollKitchen(){
@@ -1977,11 +1996,9 @@ async function pollKitchen(){
 } //check data is not null, then access orders //updates the global KOrders with fresh orders from backend  // Redraws the entire kitchen board with updated orders,any status change will reflect immediately.
 
 function renderKitchen(){
-  const pending = kOrders.filter(o=>o.status==='pending');
-  const nw = kOrders.filter(o=>['pending','paid'].includes(o.status));
-  const co = kOrders.filter(o=>o.status==='cooking');
-  const rd = kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
-
+  const nw=kOrders.filter(o=>['pending','paid'].includes(o.status));
+  const co=kOrders.filter(o=>o.status==='cooking');
+  const rd=kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
   document.getElementById('ks-new').textContent=nw.length;
   document.getElementById('ks-cook').textContent=co.length;
   document.getElementById('ks-rdy').textContent=rd.length;
@@ -1989,33 +2006,20 @@ function renderKitchen(){
   document.getElementById('kc-n').textContent=nw.length;
   document.getElementById('kc-c').textContent=co.length;
   document.getElementById('kc-r').textContent=rd.length;
-  document.getElementById('kb-new').innerHTML=nw.length
-    ?nw.map(o=>kCard(o,'new')).join('')
-    :'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
-  document.getElementById('kb-cook').innerHTML=co.length
-    ?co.map(o=>kCard(o,'cook')).join('')
-    :'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
-  document.getElementById('kb-rdy').innerHTML=rd.length
-    ?rd.map(o=>kCard(o,'rdy')).join('')
-    :'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
+  document.getElementById('kb-new').innerHTML=nw.length?nw.map(o=>kCard(o,'new')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
+  document.getElementById('kb-cook').innerHTML=co.length?co.map(o=>kCard(o,'cook')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
+  document.getElementById('kb-rdy').innerHTML=rd.length?rd.map(o=>kCard(o,'rdy')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
 }
+
 function kCard(o,type){   //Builds a single order card for the kitchen board (order index, type: new, cook or rdy)
-  // use created_at as fallback for pending orders
-const baseTime = o.paid_at || o.created_at;
-const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
+  const ageMins=Math.floor((Date.now()-new Date(o.paid_at))/60000); // calculates time in minuted that have passed since the customer paid
   const urgent=ageMins>15&&type!=='rdy';   // two conditions: order waiting time more than 15min, order not in the ready column. Then the order is deemed urgent.
- const action={
-  new: o.status==='pending'
-    ? `<div style="font-size:.7rem;color:var(--orange);margin-bottom:6px">⏳ AWAITING PAYMENT</div>
-       <button class="kb cook" disabled style="opacity:.4;cursor:not-allowed">🔥 Start Cooking</button>`
-    : `<div style="font-size:.7rem;color:var(--green);margin-bottom:6px">✅ PAID — Ready to cook</div>
-       <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
-  cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
-  rdy:`<div>${o.status==='rider_assigned'
-    ? '<div class=\"kb wait\">🏍️ Rider Assigned</div>'
-    : '<div class=\"kb wait\">⏳ Awaiting Rider</div><button class=\"kb cook\" style=\"margin-top:6px;font-size:.75rem\" onclick=\"kRedispatch('+o.id+')\" >🔄 Re-dispatch</button>'
-  }</div>`
-}[type];
+  const action={
+    new:`<div style="font-size:.7rem;color:${o.status==='paid'?'var(--green)':'var(--orange)'};margin-bottom:6px">${o.status==='paid'?'✅ PAID':'⏳ AWAITING PAYMENT'}</div>
+    <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
+    cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
+    rdy:`<div class="kb wait">${o.status==='rider_assigned'?'🏍️ Rider Assigned':'⏳ Awaiting Rider'}</div>`
+  }[type];
   return  `<div class="kc" id="kc-${o.id}">
      <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
@@ -2036,14 +2040,6 @@ async function kUpdate(id,status){
   playBeep();
 }
 
-async function kRedispatch(id){
-  toast('Re-dispatching to available riders...','ok',3000);
-  const r = await apiFetch(`/api/kitchen/orders/${id}/status`,{method:'POST',body:{status:'ready'}});
-  if(r?.success) toast('Re-dispatched! ✅','ok');
-  else toast('Re-dispatch failed — try again','err');
-  await pollKitchen();
-}
-
 function playBeep(){
   try {
     const ctx=new AudioContext(); // creates an audio env. in the browser.
@@ -2062,17 +2058,6 @@ function playBeep(){
 function launchAdmin(){
   screen('s-admin');
   renderAdminOverview();
-
-  // ADD — auto-refresh orders when any order status changes
-  supa.channel('admin-orders-watch')
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'},()=>{
-      // Only refresh if currently on orders tab
-      if(document.getElementById('ap-orders')?.classList.contains('on')){
-        renderAdminOrders();
-      }
-      renderAdminOverview(); // always refresh stats
-    })
-    .subscribe();
 }
 
 function aTab(id,btn){
@@ -2126,9 +2111,7 @@ function orderRow(o){
     <div class="or-r">
       <div class="or-p">${F.money(o.food_amount)}</div>
       <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
-      ${!['paid','cooking','ready','delivered','cancelled'].includes(o.status) ? `
-  <button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" 
-    onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>` : ''}
+      ${o.status==='pending' || o.status === 'awaiting_payment'?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>`:''}
     </div>
   </div>`;
 }
@@ -2297,39 +2280,56 @@ async function toggleMenuItem(id,el) {
 document.addEventListener('DOMContentLoaded', async () => {
   const saved = localStorage.getItem('kfc_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
-  loadChatMsgs(); // restore chat history across sessions
 
-  // If a ?role= param is present, ALWAYS go to that role's login —
-  // never auto-restore a previous session. Lets staff open kitchen/rider/admin
-  // in a new tab without being hijacked by a saved customer (or other) session.
+  // Check URL for hidden role access — not shown on landing page
+  // Kitchen: yoursite.com/?role=kitchen
+  // Admin:   yoursite.com/?role=admin
   const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole === 'kitchen') { selectRole('kitchen');    return; }
-  if(urlRole === 'admin')   { screen('s-admin-login');  return; }
-  if(urlRole === 'rider')   { selectRole('rider');      return; }
-  if(urlRole === 'customer'){ selectRole('customer');   return; }
+  if(urlRole === 'kitchen'){
+    selectRole('kitchen');
+    return;
+  }
+  if(urlRole === 'admin'){
+    screen('s-admin-login');
+    return;
+  }
+  if(urlRole === 'rider'){
+    selectRole('rider');
+    return;
+  }
 
-  // No ?role= in URL — restore previous session as normal
+  // ── Restore sessions on page refresh ──────────────────────────────────────
+
+  // Restore kitchen session
   if(localStorage.getItem('kfc_kitchen')){
-    role = 'kitchen'; launchKitchen(); return;
+    role = 'kitchen';
+    launchKitchen();
+    return;
   }
 
+  // Restore customer session — takes priority over rider
+  // (prevents leftover kfc_rider from testing hijacking the customer landing)
   if(user.name && user.phone){
-    role = 'customer'; launchCustomer(); return;
+    role = 'customer';
+    launchCustomer();
+    return;
   }
 
+  // Restore rider session — only if no customer session exists
   const savedRider = localStorage.getItem('kfc_rider');
   if(savedRider){
     try{
       const rd = JSON.parse(savedRider);
       user.phone = rd.phone;
       const data = await apiFetch('/api/rider/login',{method:'POST',body:{phone:rd.phone}});
+      // Only restore if rider is approved (has a name) — not pending/suspended
       if(data && data.name && data.status === 'approved'){
         riderState = {...riderState, ...data, phone:rd.phone};
-        role = 'rider'; launchRider();
-        // Restore chat listener if rider had an active order before refresh
-        if(riderState.activeOrder?.id) startRiderChatListener(riderState.activeOrder.id);
+        role = 'rider';
+        launchRider();
         return;
       } else {
+        // Stale or invalid rider session — clear it
         localStorage.removeItem('kfc_rider');
       }
     }catch{
@@ -2337,24 +2337,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Check for existing Supabase admin session
   const { data: { session }} = await supa.auth.getSession();
   if(session){
-    role = 'admin'; launchAdmin(); return;
-  }
-
-}); // ← closes DOMContentLoaded
-
-// onAuthStateChange lives OUTSIDE DOMContentLoaded at the top level
-supa.auth.onAuthStateChange((event, session) => {
-  if(event === 'SIGNED_IN' && role !== 'admin'){
     role = 'admin';
     launchAdmin();
   }
-  if(event === 'SIGNED_OUT'){
-    role = null;
-    screen('s-landing');
-  }
-}); // ← closes onAuthStateChange
+});
 
 
 // Admin Supabase Login
@@ -2387,12 +2376,8 @@ async function adminSignOut() {
     await supa.auth.signOut();
     if(window._adminInterval) clearInterval(window._adminInterval);
     role = null;
+    screen('s-landing');
     toast('signed out');
-
-    const urlRole = new URLSearchParams(window.location.search).get('role');
-    if(urlRole === 'admin'){ screen('s-admin-login'); return; }
-
-  screen('s-landing');
 }
 
 // SUPABASE REALTIME — KITCHEN
@@ -2448,30 +2433,12 @@ function startRiderRealtime(){
     })
     .subscribe();
 
-}
-
-// Rider background chat listener — call from acceptOrder so it runs when an order exists
-function startRiderChatListener(orderId){
-  if(!orderId) return;
-  supa.channel('order-chat-'+orderId).unsubscribe().catch(()=>{});
-  supa.channel('order-chat-'+orderId)
-    .on('broadcast',{event:'chat_request'},({payload})=>{
-      if(!document.getElementById('chat-sheet')?.classList.contains('on')){
-        toast(`💬 ${payload.customerName} wants to chat!`,'ok',6000);
-        playBeep();
-      }
-    })
-    .on('broadcast',{event:'msg'},({payload})=>{
-      if(!chatMsgs[orderId]) chatMsgs[orderId]=[];
-      chatMsgs[orderId].push(payload);
-      saveChatMsgs();
-      // Only show toast if chat sheet not open for this order
-      if(chatOrderId !== orderId || !document.getElementById('chat-sheet')?.classList.contains('on')){
-        toast(`💬 ${payload.name}: ${payload.text.slice(0,40)}${payload.text.length>40?'…':''}`, 'ok', 4000);
-        playBeep();
-      }
-    })
-    .subscribe();
+    supa.channel('order-chat-'+active0Id)
+  .on('broadcast',{event:'chat_request'},({payload})=>{
+    toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
+    playBeep();
+  })
+  .subscribe();
 }
 
 // SUPABASE REALTIME — CUSTOMER ORDER TRACKING
@@ -2485,42 +2452,12 @@ function startOrderRealtime(oid){
     },()=>{
       renderTracking(oid);
     })
-    // Notifies customer when rider opens the chat (rider→customer direction)
-    .on('broadcast',{event:'chat_request'},({payload})=>{
-      if(!document.getElementById('chat-sheet')?.classList.contains('on')){
-        const name = payload.riderName || 'Your rider';
-        toast(`💬 ${name} wants to chat about the delivery fee!`, 'ok', 6000);
-        playBeep();
-      }
-    })
-    // Background msg listener — notifies customer when rider sends a msg while chat is closed
-    .on('broadcast',{event:'msg'},({payload})=>{
-      if(!chatMsgs[oid]) chatMsgs[oid]=[];
-      chatMsgs[oid].push(payload);
-      saveChatMsgs();
-      // Only show toast if chat sheet isn't open for this order
-      if(chatOrderId !== oid || !document.getElementById('chat-sheet')?.classList.contains('on')){
-        toast(`💬 ${payload.name}: ${payload.text.slice(0,40)}${payload.text.length>40?'…':''}`, 'ok', 4000);
-        playBeep();
-      }
-    })
     .subscribe();
 }
 
 // RIDER ↔ CUSTOMER CHAT  (delivery fee negotiation)
 // Uses Supabase Realtime broadcast — no extra DB table required.
 // Channel name: order-chat-{orderId}
-
-// Chat persistence helpers — save/load keyed by orderId
-function saveChatMsgs(){
-  try{ localStorage.setItem('mb_chat', JSON.stringify(chatMsgs)); }catch{}
-}
-function loadChatMsgs(){
-  try{
-    const raw = localStorage.getItem('mb_chat');
-    if(raw) chatMsgs = JSON.parse(raw);
-  }catch{}
-}
 
 function ensureChatSheet(){
   if(document.getElementById('chat-sheet')) return;
@@ -2550,10 +2487,8 @@ function ensureChatSheet(){
 
 function openChat(orderId, myRole){
   ensureChatSheet();
-  // restore existing messages for this order
-chatOrderId=orderId; chatMyRole=myRole;
-if(!chatMsgs[orderId]) chatMsgs[orderId]=[];
-renderChatMessages();
+  chatOrderId=orderId; chatMyRole=myRole; chatMsgs=[];
+  renderChatMessages();
 
   // Quick-suggestion buttons (rider only)
   const qb=document.getElementById('chat-quick-btns');
@@ -2572,30 +2507,21 @@ renderChatMessages();
   chatChannel=supa.channel('order-chat-'+orderId);
   chatChannel
     .on('broadcast',{event:'msg'},({payload})=>{
-      chatMsgs[orderId] = chatMsgs[orderId] || [];
-      chatMsgs[orderId].push(payload);
+      chatMsgs.push(payload);
       renderChatMessages();
       playBeep();
     })
     .subscribe();
 
-  // Notify the OTHER party that someone opened the chat
-  setTimeout(async()=>{
     if(myRole === 'customer'){
-      // Customer → notify rider
-      await chatChannel.send({
-        type:'broadcast', event:'chat_request',
-        payload:{ orderId, from:'customer', customerName: user.name }
-      });
-    } else if(myRole === 'rider'){
-      // Rider → notify customer via the order-track channel they're subscribed to
-      const trackChannel = supa.channel('order-track-'+orderId);
-      await trackChannel.send({
-        type:'broadcast', event:'chat_request',
-        payload:{ orderId, from:'rider', riderName: riderState.name || 'Your rider' }
-      });
-    }
+  // Notify the rider a customer wants to chat
+  setTimeout(async()=>{
+    await chatChannel.send({
+      type:'broadcast', event:'chat_request',
+      payload:{ orderId, customerName: user.name }
+    });
   }, 500);
+}
 
   document.getElementById('chat-ov').classList.add('on');
   document.getElementById('chat-sheet').classList.add('on');
@@ -2626,9 +2552,7 @@ async function sendChatMsg(){
     text,
     ts: Date.now()
   };
-  if(!chatMsgs[chatOrderId]) chatMsgs[chatOrderId]=[];
-  chatMsgs[chatOrderId].push(msg);
-  saveChatMsgs(); // persist before broadcast
+  chatMsgs.push(msg);
   renderChatMessages();
   // Broadcast to the other side
   if(chatChannel){
@@ -2637,20 +2561,20 @@ async function sendChatMsg(){
 }
 
 function renderChatMessages(){
-  const el = document.getElementById('chat-msgs');
+  const el=document.getElementById('chat-msgs');
   if(!el) return;
-  const msgs = chatMsgs[chatOrderId] || [];
-  if(!msgs.length){
+  if(!chatMsgs.length){
     el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.82rem;padding:20px 0">No messages yet — say hello! 👋</div>';
     return;
   }
-  el.innerHTML = msgs.map(m=>{
-    const isMine = m.role === chatMyRole;
-    const time = new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
+  el.innerHTML=chatMsgs.map(m=>{
+    const isMine=m.role===chatMyRole;
+    const time=new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
     return `<div style="display:flex;flex-direction:column;align-items:${isMine?'flex-end':'flex-start'}">
       <div style="font-size:.68rem;color:var(--muted);margin-bottom:2px">${m.name} · ${time}</div>
       <div style="background:${isMine?'var(--red)':'var(--dark3)'};color:var(--white);padding:9px 13px;border-radius:${isMine?'14px 14px 2px 14px':'14px 14px 14px 2px'};max-width:80%;font-size:.87rem;word-break:break-word">${m.text}</div>
     </div>`;
   }).join('');
-  el.scrollTop = el.scrollHeight;
+  el.scrollTop=el.scrollHeight;
+}
 }
