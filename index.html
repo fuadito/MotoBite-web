@@ -200,7 +200,7 @@
 <section id="s-rider" class="screen">
     <div>
         <main>
-        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">RIDER</span></div><div class="tb-right"><span class="badge b-blue">Rider</span><button class="exit-btn" onclick="exitRole()">Sign Out</button></div></div></header>
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">RIDER</span></div><div class="tb-right"><span class="badge b-blue">Rider</span><button class="exit-btn" onclick="exitRole()">Exit</button></div></div></header>
         <div id="rider-content"></div>
         <nav class="bnav">
             <button class="bnav-btn on" data-s="home" onclick="rPanel('home',this)"><span class="ni">🏠</span>Home</button>
@@ -241,6 +241,7 @@
             <button class="a-tab" onclick="aTab('orders',this)">Orders</button>
             <button class="a-tab" onclick="aTab('riders',this)">Riders</button>
             <button class="a-tab" onclick="aTab('menu',this)">Menu</button>
+            <button class="a-tab" onclick="aTab('revenue',this)">💰 Revenue</button>
         </nav> 
         <article id="ap-overview" class="sp on">
             <div class="a-metrics" id="a-metrics"></div>
@@ -249,6 +250,7 @@
         <article id="ap-orders" class="sp"><section class="a-sec"><div id="a-orders"></div></section></article>
         <article id="ap-riders" class="sp"><section class="a-sec"><div class="a-sec-t">PENDING APPROVAL</div><div id="a-riders"></div></section></article>
         <article id="ap-menu" class="sp"><section class="a-sec"><div class="a-sec-t">MENU ITEMS</div><div id="a-menu"></div></section></article>
+        <article id="ap-revenue" class="sp"></article>
         </main>    
     </div>
 </section>
