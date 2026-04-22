@@ -21,9 +21,10 @@ let kOrders = [];
 let kDone = 0;
 let chatOrderId = null;
 let chatMyRole = null;
-let chatMsgs = [];
+let chatMsgs = {};
 let chatChannel = null;
 let _catObserver = null;
+let declinedRiders = new Set();
 
 // Calculate distance between two GPS coordinates in kilometers
 function haversine(lat1, lng1, lat2, lng2) {
@@ -259,7 +260,7 @@ const F = {
     money: a=>`KES ${Number(a).toLocaleString()}`,
     date: d=>new Date(d).toLocaleString('en-KE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
     phone: p=>{ const l=p.startsWith('254')?'0'+p.slice(3):p; return l.replace(/(\d{4})(\d{3})(\d{3})/,'$1 $2 $3'); },
-    norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?d:d.startsWith('0')?'254'+d.slice(1):'254'+d; },
+    norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?`+${d}`:d.startsWith('0')?`+254${d.slice(1)}`:`+254${d}`; },
     age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
     status: s=>({pending:'Awaiting payment',awaiting_payment:'Awaiting payment', paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
     badge: s=>({pending:'b-muted', awaiting_payment:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
@@ -325,7 +326,7 @@ function selectRole(r){
  }
     
     setTimeout(() => {
-    const saved = localStorage.getItem('mb_user');
+    const saved = localStorage.getItem('kfc_user');
     if(saved){
         try {
             const u = JSON.parse(saved);
@@ -339,7 +340,7 @@ function selectRole(r){
                 }
             } else if(role === 'rider'){
                 const phoneEl = document.getElementById('f-phone');
-                const savedRider = localStorage.getItem('mb_rider');
+                const savedRider = localStorage.getItem('kfc_rider');
                 const rPhone = savedRider ? JSON.parse(savedRider).phone : u.phone;
                 if(phoneEl && rPhone){
                     const local = rPhone.startsWith('254') ? rPhone.slice(3) : rPhone;
@@ -396,9 +397,9 @@ async function loginCustomer() {
   }
 
   const digits = phone.replace(/\D/g,'');
-  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
+  const fullPhone = digits.startsWith('254') ? `+${digits}` : `+254${digits}`;
 
-  // Look up customer directly — no OTP required until production AT is enabled
+  // Look up customer directly — no OTP needed for returning users
   const { data: customer } = await supa
     .from('customers')
     .select('*')
@@ -407,15 +408,14 @@ async function loginCustomer() {
 
   if(customer){
     user = { name: customer.name, phone: customer.phone };
-    localStorage.setItem('mb_user', JSON.stringify(user));
+    localStorage.setItem('kfc_user', JSON.stringify(user));
     toast(`Welcome back, ${customer.name}! 👋`, 'ok');
     launchCustomer();
   } else {
-    toast('No account found. Please create one first.','err');
+    toast('No account found. Please create one.','err');
     setTimeout(() => showCustomerRegister(), 1500);
   }
 }
-
 // Customer Registration
 function showCustomerRegister() {
   document.getElementById('at').textContent = 'CREATE ACCOUNT';
@@ -461,22 +461,35 @@ async function registerCustomer() {
     return;
   }
 
-  const digits = phone.replace(/\D/g,'');
-  const fullPhone = digits.startsWith('254') ? digits : `254${digits}`;
+// CORRECT — consistent with rest of app
+const fullPhone = phone.startsWith('0') 
+  ? `+254${phone.slice(1)}` 
+  : `+254${phone}`;
 
-  // Register directly — no OTP required until production AT is enabled
-  const res = await apiFetch('/api/customer/login', {
-    method: 'POST',
-    body: { phone: fullPhone, name }
-  });
+  // Save name temporarily
+  localStorage.setItem('temp_name', name);
 
-  if(res){
-    user = { name, phone: fullPhone };
-    localStorage.setItem('mb_user', JSON.stringify(user));
-    toast(`Welcome to MotoBite, ${name}! 🎉`, 'ok');
-    launchCustomer();
-  } else {
-    toast('Registration failed — check your connection and try again','err');
+  // Send OTP and verify
+  await sendOtpAndVerify(fullPhone, async (verifiedPhone) => {
+    // OTP verified - complete registration
+    const savedName = localStorage.getItem('temp_name');
+    
+    const res = await apiFetch('/api/auth/register', {
+      method: 'POST',
+      body: { phone: verifiedPhone, name: savedName }
+    });
+
+    if(res?.success){
+      // Save user data using the same kfc_user key the rest of the app reads
+      user = { name: savedName, phone: verifiedPhone };
+      localStorage.setItem('kfc_user', JSON.stringify(user));
+      localStorage.removeItem('temp_name');
+
+      toast(`Welcome to MotoBite, ${savedName}! 🎉`, 'ok');
+      launchCustomer();
+    } else {
+      toast(res?.error || 'Registration failed','err');
+    }
   });
 }
 
@@ -489,6 +502,11 @@ function showRiderSignIn(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Sign In →'; }
+
+    // ADD — hide back/cancel for rider screens
+  document.querySelector('.auth-back')?.style.setProperty('display','none');
+  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
+
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   // Mark as sign-in mode so authSubmit knows not to create a new account
@@ -502,6 +520,11 @@ function showRiderRegister(){
   document.getElementById('af').innerHTML=buildFields('phone');
   const contBtn = document.getElementById('auth-btn');
   if(contBtn){ contBtn.style.display='block'; contBtn.textContent='Register →'; }
+
+    // ADD — hide back/cancel for rider screens
+  document.querySelector('.auth-back')?.style.setProperty('display','none');
+  document.querySelector('#s-auth .btn-ghost')?.style.setProperty('display','none');
+
   setTimeout(()=>document.querySelector('#af input')?.focus(),100);
   enableEnterKey('auth-btn');
   window._riderMode = 'register';
@@ -591,6 +614,9 @@ async function verifyOtp() {
 async function authSubmit() {
     const btn=document.getElementById('auth-btn');
 
+    // If we're in OTP verification mode, route to verifyOtp instead
+    if(window._otpMode){ verifyOtp(); return; }
+
     btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
     const reset =()=>{ btn.innerHTML='Continue →'; btn.disabled=false; };
 
@@ -605,7 +631,7 @@ async function authSubmit() {
  }
 
  if(!nameInput){
-   const saved = localStorage.getItem('mb_user');
+   const saved = localStorage.getItem('kfc_user');
    if(!saved){
      toast('No account found. Tap "Create Account" to sign up.','err');
      return reset();
@@ -632,22 +658,25 @@ async function authSubmit() {
  }
 
  // CORRECT — OTP only for new customers
-const isReturning = !!localStorage.getItem('mb_user');
+const isReturning = !!localStorage.getItem('kfc_user');
 
 if(isReturning){
   // Existing customer — skip OTP, log straight in
-  localStorage.setItem('mb_user', JSON.stringify(user));
+  localStorage.setItem('kfc_user', JSON.stringify(user));
   toast(`Welcome back, ${user.name}! 👋`,'ok');
   await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
   reset(); launchCustomer();
   return;
 }
 
-// New customer — save directly, no OTP until production AT is enabled
-localStorage.setItem('mb_user', JSON.stringify(user));
-toast(`Account created! Welcome, ${user.name}! 🍗`,'ok');
-await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
-reset(); launchCustomer();
+// New customer — verify phone with OTP first
+btn.innerHTML='Continue →'; btn.disabled=false;
+sendOtpAndVerify(user.phone, async () => {
+  localStorage.setItem('kfc_user', JSON.stringify(user));
+  toast(`Account created! Welcome, ${user.name}! 🍗`,'ok');
+  await apiFetch('/api/customer/login',{method:'POST',body:{phone:user.phone,name:user.name}});
+  launchCustomer();
+});
 return;
 
 
@@ -656,7 +685,7 @@ return;
      else if(role==='rider'){
  const raw=document.getElementById('f-phone')?.value.trim();
         if(!raw||raw.replace(/\D/g,'').length<9){ toast('Enter a valid phone number','err'); return reset(); }
-        user.phone=F.norm(raw);
+        user.phone = F.norm(raw);
 
         // ── SIGN IN mode — no OTP needed, just look up their account ──────
         if(window._riderMode === 'signin'){
@@ -671,12 +700,12 @@ return;
             reset(); screen('s-landing'); return;
           }
           if(data.status === 'suspended'){
-            toast('Your account has been suspended. Contact MotoBite support on 0702 923 826.','err',8000);
+            toast('Your account has been suspended. Contact KFC Narok on 0702 923 826.','err',8000);
             reset(); screen('s-landing'); return;
           }
           // Approved rider — restore full state and go to dashboard
           riderState={...riderState,...data,phone:user.phone};
-          localStorage.setItem('mb_rider',JSON.stringify({phone:user.phone}));
+          localStorage.setItem('kfc_rider',JSON.stringify({phone:user.phone}));
           toast(`Welcome back, ${data.name}! 🏍️`,'ok');
           reset(); launchRider();
           return;
@@ -696,7 +725,7 @@ return;
           }
           // No account yet — go to registration steps
           riderState.phone = user.phone;
-          localStorage.setItem('mb_rider', JSON.stringify({phone:user.phone}));
+          localStorage.setItem('kfc_rider', JSON.stringify({phone:user.phone}));
           toast('Phone verified! Complete your registration 🏍️','ok');
           launchRider(); // launchRider checks !riderState.name → renderRiderReg
         });
@@ -707,7 +736,7 @@ return;
     if(!code){ toast('Enter the kitchen passcode','err'); return reset(); }
     const r=await apiFetch('/api/kitchen/verify',{method:'POST',body:{code}});
     if(!r?.ok){ toast('Wrong passcode — ask your manager','err'); return reset(); }
-    localStorage.setItem('mb_kitchen','1');
+    localStorage.setItem('kfc_kitchen','1');
     reset(); launchKitchen();
 
   } else if(role==='admin'){
@@ -716,19 +745,21 @@ return;
   }
 }
 
-
-
-
-function goLanding(){
-    screen('s-landing');
-}
 function exitRole(){
   role=null; cart=[]; active0Id=null; foodR=0; riderR=0;
   kDone=0; kOrders=[];
   if(kInterval){ clearInterval(kInterval); kInterval=null; }
   if(_locInterval){ clearInterval(_locInterval); _locInterval=null; }
+  if(_clockInterval){ clearInterval(_clockInterval); _clockInterval=null; }
   riderState={name:'',phone:'',rating:0,deliveries:0,online:false,regStep:0,regData:{},activeOrder:null,collected:false,todayTrips:0,todayEarnings:0};
-  localStorage.removeItem('mb_kitchen');
+  localStorage.removeItem('kfc_kitchen');
+
+  // If user arrived via ?role= URL — return to that role's login, not landing
+  const urlRole = new URLSearchParams(window.location.search).get('role');
+  if(urlRole === 'kitchen'){ selectRole('kitchen'); return; }
+  if(urlRole === 'rider'){   selectRole('rider');   return; }
+  if(urlRole === 'admin'){   screen('s-admin-login'); return; }
+
   screen('s-landing');
 }
 
@@ -752,13 +783,13 @@ async function launchCustomer(){
     renderCats(); renderMenu('Brand New'); updateCartUI();
 
     // Restore active order on login
-      const savedOid = localStorage.getItem('mb_active_order');
+      const savedOid = localStorage.getItem('kfc_active_order');
     if(savedOid){
         const order = await apiFetch(`/api/orders/${savedOid}`);
         if(order && !['delivered','cancelled'].includes(order.status)){
             showTracking(savedOid);
         } else { 
-                   localStorage.removeItem('mb_active_order');
+                   localStorage.removeItem('kfc_active_order');
         }
     }
 }
@@ -1112,7 +1143,7 @@ function renderCartSheet(){
   <span>Delivery fee</span>
   <span class="nt" style="color:var(--orange);font-size:.75rem">⏳ Agreed with rider on assignment</span>
 </div>
-    <div class="srow tot"><span>Pay to Till</span><span>${F.money(total)}</span></div>
+    <div class="srow tot"><span>Pay to KFC Till</span><span>${F.money(total)}</span></div>
   </div>`;
   ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();cPanel('location')">Confirm Order →</button>
   <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
@@ -1132,9 +1163,9 @@ function removeCartItem(i){
     err.classList.add('hidden');
     navigator.geolocation.getCurrentPosition(async pos=>{
       const {latitude:lat,longitude:lng}=pos.coords;
-      const dist=haversine(lat,lng,-1.0833,35.8667);
-      if(dist>170){
-          err.textContent=`❌ You're ${dist.toFixed(1)}km from MotoBite. We only deliver within 170km.`;
+      const dist=haversine(lat,lng,-1.0907,35.8710);
+      if(dist>110){
+          err.textContent=`❌ You're ${dist.toFixed(1)}km from KFC Narok. We only deliver within 110km.`;
           err.classList.remove('hidden'); btn.innerHTML='📍 Try Again'; btn.disabled=false; return;
       }
 
@@ -1150,13 +1181,14 @@ function removeCartItem(i){
         const a = gd.address || {};
         // Build area string from most specific to least specific
         // e.g. "Narok Town", "Nakuru CBD", "Naivasha"
-        areaName = a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
+        // CORRECT — add township before suburb since Narok uses township
+        areaName = a.township || a.suburb || a.village || a.town || a.city_district || a.city || a.county || 'Narok Town';
       } catch(e) {
         console.warn('Reverse geocode failed — using default area name');
       }
 
       userLoc={lat,lng,areaName};
-      ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from restaurant · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
+      ok.innerHTML=`<div class="loc-ok"><div class="loc-ok-ico">✅</div><div><div class="loc-ok-t">Location confirmed!</div><div class="loc-ok-s">${dist.toFixed(1)}km from KFC Narok · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div></div></div>`;
       ok.classList.remove('hidden');
       btn.textContent='✅ Continue to Payment';
       btn.onclick=goToPayment;
@@ -1213,7 +1245,7 @@ if(!amountPaid || amountPaid < orderTotal){
 
   const oid=order.id;
   active0Id=oid;
-  localStorage.setItem('mb_active_order',oid);
+  localStorage.setItem('kfc_active_order',oid);
  
   // Show STK status box if the backend sent a push, otherwise keep manual instructions
     const stkBox=document.getElementById('stk-status');
@@ -1222,12 +1254,14 @@ if(!amountPaid || amountPaid < orderTotal){
     // STK push was sent — highlight the phone prompt
     if(stkBox)  stkBox.style.display='block';
     if(manualPay) manualPay.style.display='none';
-    btn.innerHTML='📱 q1  Waiting for M-Pesa payment...'; btn.disabled=true;
+    cart = []; updateCartUI(); // clear cart when STK push sent
+    btn.innerHTML='📱 Waiting for M-Pesa payment...'; btn.disabled=true;
     toast('Check your phone — M-Pesa prompt sent! 📱','ok',6000);
   } else {
     // STK not yet live — manual payment flow
 btn.innerHTML = '✅ Confirm Payment';
 btn.disabled = false;
+enableEnterKey('auth-btn');
 // Change button to confirm payment instead of creating new order
 btn.onclick = () => confirmPayment(oid);
 toast('Order placed! Pay via M-Pesa, then click "Confirm Payment" 📱', 'ok', 5000);
@@ -1237,7 +1271,8 @@ cart = [];
 updateCartUI();
 showTracking(oid);
 
-}
+  } // end else
+} // end initPay
 
 // Customer confirms they have paid via M-Pesa
 async function confirmPayment(orderId) {
@@ -1256,23 +1291,33 @@ async function confirmPayment(orderId) {
   
   if (res?.success) {
     toast('✅ Payment confirmed! Your order is being prepared.', 'ok');
-    
+    // Clear cart and hide float so "View Order" button disappears
+    cart = [];
+    updateCartUI();
     // Update order status
     active0Id = orderId;
-    localStorage.setItem('mb_active_order', orderId);
-    
+    localStorage.setItem('kfc_active_order', orderId);
     // Refresh tracking to show updated status
     showTracking(orderId);
   } else {
     toast(res?.error || '❌ Failed to confirm payment. Try again.', 'err');
     btn.innerHTML = '✅ I Have Paid';
     btn.disabled = false;
+
+    if (res?.success) {
+    document.getElementById('cart-float')?.classList.add('hidden'); // ADD
+    
+    }
   }
 }
 
 function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
+
+      // ADD — hide cart float once order is placed
+  document.getElementById('cart-float')?.classList.add('hidden');
+
     renderTracking(oid);
     startOrderRealtime(oid); // FIX: get instant status updates instead of waiting for next poll
     const iv=setInterval(()=>renderTracking(oid),12000);
@@ -1308,7 +1353,7 @@ async function renderTracking(oid) {
       <div class="empty" style="padding-top:60px">
         <div class="ei">📦</div>
         <h3>ORDER NOT FOUND</h3>
-        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact MotoBite support.</p>
+        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact KFC Narok.</p>
         <button class="btn btn-ghost" style="margin-top:16px" onclick="cPanel('menu')">← Back to Menu</button>
       </div>`;
     return;
@@ -1378,9 +1423,6 @@ async function renderTracking(oid) {
       `}
       ${riderSection}
       ${assignedRider}
-      ${['pending','paid','cooking','ready','rider_assigned','picked_up'].includes(o.status) ? `
-        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
-      ` : ''}
       <div class="card">
         <div class="card-t">ORDER SUMMARY</div>
         ${(o.items||[]).map(i => `
@@ -1453,11 +1495,12 @@ async function selectRider(orderId, riderPhone, el) {
     body: { rider_phone: riderPhone }
   });
   
-  if (res?.success) {
-    toast('Rider assigned! They will contact you. 🚴', 'ok');
-    renderTracking(orderId); // Refresh to show assigned rider
+    if (res?.success) {
+    toast('Rider notified! Waiting for response... 🚴', 'ok');
+    renderTracking(orderId);
+    // Customer waits — rider will chat back if interested
   } else {
-    toast(res?.error || 'Failed to assign rider. Try again.', 'err');
+    toast(res?.error || 'Failed. Try another rider .', 'err');
     loadAvailableRiders(orderId);
   }
 }
@@ -1479,15 +1522,30 @@ async function submitRating(){
 
 // RIDER APP
 
-function launchRider(){
+async function launchRider(){
     screen('s-rider');
     startRiderRealtime(); // FIX: subscribe to dispatch broadcasts as soon as rider logs in
+
+     // ADD — restore active delivery if rider refreshes mid-delivery
+  if(!riderState.activeOrder){
+    const saved = localStorage.getItem('kfc_active_delivery');
+    if(saved){
+      try{ riderState.activeOrder = JSON.parse(saved); 
+           riderState.collected = false; // reset collected state
+      }catch{}
+    }
+  }
+
     if(!riderState.name){
         riderState.regStep=0;
         renderRiderReg();
     } else {
         renderRiderHome();
+        // If has active order — go straight to delivery, skip the alert
+    if(riderState.activeOrder){
+      rPanel('delivery', document.querySelector('[data-s="delivery"]'));
     }
+  }
 }
 
 function rPanel(id,btn=null){
@@ -1701,7 +1759,7 @@ function renderRiderHome(){
       </div>
       <div class="stats2">
         <div class="sm"><div class="sm-v" id="r-trips">${riderState.todayTrips}</div><div class="sm-l">Today's Trips</div></div>
-        <div class="sm"><div class="sm-v" id="r-earn">KES ${riderState.todayTrips*100}</div><div class="sm-l">Today's Earnings</div></div>
+        <div class="sm-v" id="r-earn">KES ${riderState.todayEarnings||0}</div><<div class="sm-l">Today's Earnings</div></div>
         <div class="sm"><div class="sm-v">${riderState.deliveries}</div><div class="sm-l">Total Trips</div></div>
         <div class="sm"><div class="sm-v" style="color:var(--green)">${riderState.rating}</div><div class="sm-l">Rating</div></div>
       </div>
@@ -1726,39 +1784,78 @@ function showRiderOrderAlert(o){
     let t=180;
     z.innerHTML=`<div class="o-alert">
     <div class="oa-top"><div class="oa-title">🔔 NEW ORDER!</div><div class="oa-timer" id="ot">${fmtTime(t)}</div></div>
-    <div class="oa-detail">📍 Collect: MotoBite Restaurant</div>
+    <div class="oa-detail">📍 Collect: KFC Narok</div>
     <div class="oa-detail">📍 Deliver to: ${o.customer_area}</div>
-    <div class="oa-detail">💰 Your fee: Agree with the customer</div>
+    ${(o.location?.lat || o.customer_lat) ? `
+    <a href="https://www.google.com/maps/dir/?api=1&origin=-1.0833,35.8667&destination=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}"
+       target="_blank"
+       style="display:block;background:var(--dark3);border:1px solid var(--line2);color:var(--white);text-align:center;padding:8px;border-radius:8px;text-decoration:none;font-size:.8rem;margin:6px 0">
+      🗺️ Preview Route (KFC → Customer)
+    </a>` : ''}
+    <div class="oa-detail">💰 Agree delivery fee via chat</div>
     <div class="oa-items">${(o.items||[]).map(i=>`• ${i.name}${i.note?` (${i.note})`:''}`).join('<br>')}</div>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openPreAcceptChat(${o.id})">💬 Chat with Customer First</button>
     <div class="oa-btns"><button class="btn-accept" onclick="acceptOrder()">✅ ACCEPT</button><button class="btn-decline" onclick="declineOrder()">Pass</button></div>
      </div>`;
+
+    // Subscribe to chat for this order BEFORE accepting
+  supa.channel('order-chat-'+o.id)
+    .on('broadcast',{event:'msg'},({payload})=>{
+      if(chatOrderId !== o.id){
+        toast(`💬 Customer: ${payload.text.substring(0,30)}...`,'ok',5000);
+        playBeep();
+      }
+    })
+    .subscribe();
+
     if(oTimer) clearInterval(oTimer);
     oTimer=setInterval(()=>{ t--; const el=document.getElementById('ot'); if(el)el.textContent=fmtTime(t); if(t<=0){clearInterval(oTimer);z.innerHTML='';riderState.activeOrder=null;toast('0rder expired - no response in time','warn');} },1000);
 }
 
+function openPreAcceptChat(orderId){
+  // Store the order temporarily so chat works before acceptance
+  if(!riderState.activeOrder) riderState.activeOrder = {id: orderId};
+  openChat(orderId, 'rider');
+}
 function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
 function acceptOrder(){
-    if(oTimer) clearInterval(oTimer);
-    // FIX: notify the backend so the order is assigned in the DB and no other rider can take it
-    if(riderState.activeOrder?.id){
-        apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {
-            method: 'POST',
-            headers: { 'x-user-phone': riderState.phone || user.phone }
-        });
-    }
-    toast('Order accepted! Head to the restaurant 🏍️','ok');
-    document.getElementById('r-alert-zone').innerHTML='';
-    riderState.collected=false;
-    rPanel('delivery', document.querySelector('[data-s="delivery"]'));
+  if(oTimer) clearInterval(oTimer);
+  apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {method:'POST'});
+  localStorage.setItem('kfc_active_delivery', JSON.stringify(riderState.activeOrder));
+
+  // ADD — listen for chat requests on this specific order
+  const orderId = riderState.activeOrder.id;
+  supa.channel('order-chat-'+orderId)
+    .on('broadcast',{event:'chat_request'},({payload})=>{
+      toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
+      playBeep();
+    })
+    .on('broadcast',{event:'msg'},({payload})=>{
+      // Show notification if chat is not open
+      if(chatOrderId !== orderId){
+        toast(`💬 New message from customer`,'ok',4000);
+        playBeep();
+      }
+    })
+    .subscribe();
+
+  toast('Order accepted! Head to KFC Narok 🏍️','ok');
+  document.getElementById('r-alert-zone').innerHTML='';
+  riderState.collected=false;
+  rPanel('delivery', document.querySelector('[data-s="delivery"]'));
 }
 
 function declineOrder(){
-    if(oTimer) clearInterval(oTimer);
-    document.getElementById('r-alert-zone').innerHTML='';
-    riderState.activeOrder=null;
-    toast('Order passed');
-}
+  if(oTimer) clearInterval(oTimer);
+  document.getElementById('r-alert-zone').innerHTML='';
+  // ADD — tell backend this rider declined
+  if(riderState.activeOrder?.id){
+    apiFetch(`/api/orders/${riderState.activeOrder.id}/decline`, {method:'POST'});
+  }
+  riderState.activeOrder=null;
+  toast('Order passed');
+} 
 
 function renderRiderDelivery(){
     const rc=document.getElementById('rider-content');
@@ -1773,22 +1870,50 @@ function renderRiderDelivery(){
         <span style="font-size:.7rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.08em">Active Delivery · ${o.order_number}</span>
       </div>
       <div class="receipt">
-        <div class="receipt-hdr">🧾 MOTOBITE COLLECTION RECEIPT</div>
+        <div class="receipt-hdr">🧾 KFC NAROK COLLECTION RECEIPT</div>
         <div>Order: <strong>${o.order_number}</strong></div>
          ${(o.items||[]).map(i=>`<div>• ${i.name}${i.chickenType?` <strong style="color:var(--red)">[${i.chickenType}]</strong>`:''}${i.note?` <span style="color:var(--orange)">(${i.note})</span>`:''}</div>`).join('')}
-        <div class="receipt-note">Show this screen to restaurant staff at the counter</div>
+        <div class="receipt-note">Show this screen to KFC staff at the counter</div>
       </div>
       <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.85rem">
         📍 Deliver to: <strong>${o.customer_area}</strong><br>
-        💰 Delivery fee: <strong style="color:var(--green)">Agree with customer</strong> - collect cash at door
+        💰 Delivery fee: <strong style="color:var(--green)">${riderState.agreedFee ? `KES ${riderState.agreedFee} (agreed)` : 'Agree with customer'}</strong> - collect cash at door
       </div>
+
+      ${(o.location?.lat || o.customer_lat) ? `
+      <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px">
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px;font-weight:600;letter-spacing:.5px">📍 CUSTOMER LOCATION</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}"
+             target="_blank"
+             style="flex:1;background:var(--red);color:#fff;text-align:center;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem">
+            🗺️ Navigate (Google Maps)
+          </a>
+          <a href="https://maps.apple.com/?daddr=${o.location?.lat||o.customer_lat},${o.location?.lng||o.customer_lng}&dirflg=d"
+             target="_blank"
+             style="flex:1;background:var(--dark2);color:var(--white);text-align:center;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem;border:1px solid var(--line2)">
+            🍎 Apple Maps
+          </a>
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:6px;text-align:center">
+          ${(o.location?.lat||o.customer_lat).toFixed(5)}, ${(o.location?.lng||o.customer_lng).toFixed(5)}
+        </div>
+      </div>
+      ` : `
+      <div style="background:var(--dark3);border-radius:var(--r);padding:10px 12px;margin-bottom:12px;font-size:.8rem;color:var(--orange)">
+        ⚠️ No GPS coordinates — ask customer for their exact location via chat
+      </div>
+      `}
       <button class="btn btn-ghost btn-full" style="margin-top:8px"
           onclick="openChat(${o.id},'rider')">
           💬 Chat with Customer — Negotiate Fee
       </button>
-      ${riderState.collected
-        ?`<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
-        :`<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`}
+    ${riderState.collected
+  ? `<button class="btn btn-primary btn-full" onclick="showPin()">🔐 Enter Customer PIN</button>`
+  : riderState.activeOrder?.status === 'paid' || riderState.activeOrder?.status === 'rider_assigned'
+    ? `<button class="btn btn-green btn-full" onclick="markCollected()">✅ Food Collected — Start Delivery</button>`
+    : `<div style="text-align:center;padding:10px;color:var(--orange);font-size:.85rem">⏳ Awaiting payment confirmation from admin</div>`
+}
     </div>
   </div>`;
 }
@@ -1834,7 +1959,13 @@ function markCollected(){
     document.querySelectorAll('#s-rider .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='home'));
     renderRiderHome();
     toast(`🎉 PIN correct! Collect delivery fee from customer.`,'ok',5000);
-     } else {
+    const agreedFee = riderState.agreedFee || parseInt(localStorage.getItem('kfc_agreed_fee')) || 0;
+riderState.todayEarnings = (riderState.todayEarnings || 0) + agreedFee;
+riderState.agreedFee = 0;
+localStorage.removeItem('kfc_agreed_fee');
+     localStorage.removeItem('kfc_active_delivery'); localStorage.removeItem('kfc_chat_'+riderState.activeOrder?.id);
+
+  } else {
     for(let i=0;i<4;i++){const el=document.getElementById(`p${i}`); if(el)el.classList.add('err');}
     pinBuf=''; setTimeout(updatePinDisplay,600);
     toast('Wrong PIN. Ask customer to check their SMS.','err');
@@ -1881,7 +2012,8 @@ function startLocTracking(){
 
 // KITCHEN APP
 let kInterval=null;
-let _locInterval=null; // FIX: track location interval so it can be cleared on re-toggle
+let _locInterval=null;
+let _clockInterval=null; // FIX: track location interval so it can be cleared on re-toggle
 
 function launchKitchen(){
   screen('s-kitchen');
@@ -1894,11 +2026,12 @@ function launchKitchen(){
 }
 
 function startClock(){
+  if(_clockInterval){ clearInterval(_clockInterval); _clockInterval=null; }
   const tick=()=>{
     const el=document.getElementById('k-clock');
     if(el) el.textContent=new Date().toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Africa/Nairobi'});
   };
-  tick(); setInterval(tick,1000);
+  tick(); _clockInterval=setInterval(tick,1000);
 }
 
 async function pollKitchen(){
@@ -1907,9 +2040,11 @@ async function pollKitchen(){
 } //check data is not null, then access orders //updates the global KOrders with fresh orders from backend  // Redraws the entire kitchen board with updated orders,any status change will reflect immediately.
 
 function renderKitchen(){
-  const nw=kOrders.filter(o=>['pending','paid'].includes(o.status));
-  const co=kOrders.filter(o=>o.status==='cooking');
-  const rd=kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
+  const pending = kOrders.filter(o=>o.status==='pending');
+  const nw = kOrders.filter(o=>['pending','paid'].includes(o.status));
+  const co = kOrders.filter(o=>o.status==='cooking');
+  const rd = kOrders.filter(o=>['ready','rider_assigned'].includes(o.status));
+
   document.getElementById('ks-new').textContent=nw.length;
   document.getElementById('ks-cook').textContent=co.length;
   document.getElementById('ks-rdy').textContent=rd.length;
@@ -1917,20 +2052,33 @@ function renderKitchen(){
   document.getElementById('kc-n').textContent=nw.length;
   document.getElementById('kc-c').textContent=co.length;
   document.getElementById('kc-r').textContent=rd.length;
-  document.getElementById('kb-new').innerHTML=nw.length?nw.map(o=>kCard(o,'new')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
-  document.getElementById('kb-cook').innerHTML=co.length?co.map(o=>kCard(o,'cook')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
-  document.getElementById('kb-rdy').innerHTML=rd.length?rd.map(o=>kCard(o,'rdy')).join(''):'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
+  document.getElementById('kb-new').innerHTML=nw.length
+    ?nw.map(o=>kCard(o,'new')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">🍗</div><h3 style="font-size:.85rem">NO NEW ORDERS</h3></div>';
+  document.getElementById('kb-cook').innerHTML=co.length
+    ?co.map(o=>kCard(o,'cook')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">🔥</div><h3 style="font-size:.85rem">NOTHING COOKING</h3></div>';
+  document.getElementById('kb-rdy').innerHTML=rd.length
+    ?rd.map(o=>kCard(o,'rdy')).join('')
+    :'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
 }
-
 function kCard(o,type){   //Builds a single order card for the kitchen board (order index, type: new, cook or rdy)
-  const ageMins=Math.floor((Date.now()-new Date(o.paid_at))/60000); // calculates time in minuted that have passed since the customer paid
+  // use created_at as fallback for pending orders
+const baseTime = o.paid_at || o.created_at;
+const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   const urgent=ageMins>15&&type!=='rdy';   // two conditions: order waiting time more than 15min, order not in the ready column. Then the order is deemed urgent.
-  const action={
-    new:`<div style="font-size:.7rem;color:${o.status==='paid'?'var(--green)':'var(--orange)'};margin-bottom:6px">${o.status==='paid'?'✅ PAID':'⏳ AWAITING PAYMENT'}</div>
-    <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
-    cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
-    rdy:`<div class="kb wait">${o.status==='rider_assigned'?'🏍️ Rider Assigned':'⏳ Awaiting Rider'}</div>`
-  }[type];
+ const action={
+  new: o.status==='pending'
+    ? `<div style="font-size:.7rem;color:var(--orange);margin-bottom:6px">⏳ AWAITING PAYMENT</div>
+       <button class="kb cook" disabled style="opacity:.4;cursor:not-allowed">🔥 Start Cooking</button>`
+    : `<div style="font-size:.7rem;color:var(--green);margin-bottom:6px">✅ PAID — Ready to cook</div>
+       <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
+  cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
+  rdy:`<div>${o.status==='rider_assigned'
+    ? '<div class=\"kb wait\">🏍️ Rider Assigned</div>'
+    : '<div class=\"kb wait\">⏳ Awaiting Rider</div><button class=\"kb cook\" style=\"margin-top:6px;font-size:.75rem\" onclick=\"kRedispatch('+o.id+')\" >🔄 Re-dispatch</button>'
+  }</div>`
+}[type];
   return  `<div class="kc" id="kc-${o.id}">
      <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
@@ -1951,6 +2099,14 @@ async function kUpdate(id,status){
   playBeep();
 }
 
+async function kRedispatch(id){
+  toast('Re-dispatching to available riders...','ok',3000);
+  const r = await apiFetch(`/api/kitchen/orders/${id}/status`,{method:'POST',body:{status:'ready'}});
+  if(r?.success) toast('Re-dispatched! ✅','ok');
+  else toast('Re-dispatch failed — try again','err');
+  await pollKitchen();
+}
+
 function playBeep(){
   try {
     const ctx=new AudioContext(); // creates an audio env. in the browser.
@@ -1969,6 +2125,17 @@ function playBeep(){
 function launchAdmin(){
   screen('s-admin');
   renderAdminOverview();
+
+  // ADD — auto-refresh orders when any order status changes
+  supa.channel('admin-orders-watch')
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'},()=>{
+      // Only refresh if currently on orders tab
+      if(document.getElementById('ap-orders')?.classList.contains('on')){
+        renderAdminOrders();
+      }
+      renderAdminOverview(); // always refresh stats
+    })
+    .subscribe();
 }
 
 function aTab(id,btn){
@@ -2022,7 +2189,9 @@ function orderRow(o){
     <div class="or-r">
       <div class="or-p">${F.money(o.food_amount)}</div>
       <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
-      ${o.status==='pending' || o.status === 'awaiting_payment'?`<button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>`:''}
+      ${!['paid','cooking','ready','delivered','cancelled'].includes(o.status) ? `
+  <button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" 
+    onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>` : ''}
     </div>
   </div>`;
 }
@@ -2189,72 +2358,70 @@ async function toggleMenuItem(id,el) {
 
 // RESTORE SESSION
 document.addEventListener('DOMContentLoaded', async () => {
-  const saved = localStorage.getItem('mb_user');
+  const saved = localStorage.getItem('kfc_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
+  loadChatMsgs(); // restore chat history across sessions
 
-  // Check URL for hidden role access — not shown on landing page
-  // Kitchen: yoursite.com/?role=kitchen
-  // Admin:   yoursite.com/?role=admin
+  // If a ?role= param is present, ALWAYS go to that role's login —
+  // never auto-restore a previous session. Lets staff open kitchen/rider/admin
+  // in a new tab without being hijacked by a saved customer (or other) session.
   const urlRole = new URLSearchParams(window.location.search).get('role');
-  if(urlRole === 'kitchen'){
-    selectRole('kitchen');
-    return;
-  }
-  if(urlRole === 'admin'){
-    screen('s-admin-login');
-    return;
-  }
-  if(urlRole === 'rider'){
-    selectRole('rider');
-    return;
+  if(urlRole === 'kitchen') { selectRole('kitchen');    return; }
+  if(urlRole === 'admin')   { screen('s-admin-login');  return; }
+  if(urlRole === 'rider')   { selectRole('rider');      return; }
+  if(urlRole === 'customer'){ selectRole('customer');   return; }
+
+  // No ?role= in URL — restore previous session as normal
+  if(localStorage.getItem('kfc_kitchen')){
+    role = 'kitchen'; launchKitchen(); return;
   }
 
-  // ── Restore sessions on page refresh ──────────────────────────────────────
-
-  // Restore kitchen session
-  if(localStorage.getItem('mb_kitchen')){
-    role = 'kitchen';
-    launchKitchen();
-    return;
-  }
-
-  // Restore customer session — takes priority over rider
-  // (prevents leftover mb_rider from testing hijacking the customer landing)
   if(user.name && user.phone){
-    role = 'customer';
-    launchCustomer();
-    return;
+    role = 'customer'; launchCustomer(); return;
   }
 
-  // Restore rider session — only if no customer session exists
-  const savedRider = localStorage.getItem('mb_rider');
+  const savedRider = localStorage.getItem('kfc_rider');
   if(savedRider){
     try{
       const rd = JSON.parse(savedRider);
       user.phone = rd.phone;
       const data = await apiFetch('/api/rider/login',{method:'POST',body:{phone:rd.phone}});
-      // Only restore if rider is approved (has a name) — not pending/suspended
       if(data && data.name && data.status === 'approved'){
         riderState = {...riderState, ...data, phone:rd.phone};
-        role = 'rider';
-        launchRider();
+        role = 'rider'; launchRider();
+        // Restore chat listener if rider had an active order before refresh
+        if(riderState.activeOrder?.id) startRiderChatListener(riderState.activeOrder.id);
         return;
       } else {
-        // Stale or invalid rider session — clear it
-        localStorage.removeItem('mb_rider');
+        localStorage.removeItem('kfc_rider');
       }
     }catch{
-      localStorage.removeItem('mb_rider');
+      localStorage.removeItem('kfc_rider');
     }
   }
 
-  // Check for existing Supabase admin session
   const { data: { session }} = await supa.auth.getSession();
   if(session){
+    role = 'admin'; launchAdmin(); return;
+  }
+
+}); // ← closes DOMContentLoaded
+
+// onAuthStateChange lives OUTSIDE DOMContentLoaded at the top level
+supa.auth.onAuthStateChange((event, session) => {
+  // don't override if user arrived via ?role= URL
+    const urlRole = new URLSearchParams(window.location.search).get('role');
+  if(urlRole) return; // let URL role take priority
+  
+  if(event === 'SIGNED_IN' && role !== 'admin'){
     role = 'admin';
     launchAdmin();
   }
-});
+  if(event === 'SIGNED_OUT'){
+    role = null;
+    screen('s-landing');
+  }
+}); // ← closes onAuthStateChange
 
 
 // Admin Supabase Login
@@ -2287,8 +2454,12 @@ async function adminSignOut() {
     await supa.auth.signOut();
     if(window._adminInterval) clearInterval(window._adminInterval);
     role = null;
-    screen('s-landing');
     toast('signed out');
+
+    const urlRole = new URLSearchParams(window.location.search).get('role');
+    if(urlRole === 'admin'){ screen('s-admin-login'); return; }
+
+  screen('s-landing');
 }
 
 // SUPABASE REALTIME — KITCHEN
@@ -2344,12 +2515,30 @@ function startRiderRealtime(){
     })
     .subscribe();
 
-    supa.channel('order-chat-'+active0Id)
-  .on('broadcast',{event:'chat_request'},({payload})=>{
-    toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
-    playBeep();
-  })
-  .subscribe();
+}
+
+// Rider background chat listener — call from acceptOrder so it runs when an order exists
+function startRiderChatListener(orderId){
+  if(!orderId) return;
+  supa.channel('order-chat-'+orderId).unsubscribe().catch(()=>{});
+  supa.channel('order-chat-'+orderId)
+    .on('broadcast',{event:'chat_request'},({payload})=>{
+      if(!document.getElementById('chat-sheet')?.classList.contains('on')){
+        toast(`💬 ${payload.customerName} wants to chat!`,'ok',6000);
+        playBeep();
+      }
+    })
+    .on('broadcast',{event:'msg'},({payload})=>{
+      if(!chatMsgs[orderId]) chatMsgs[orderId]=[];
+      chatMsgs[orderId].push(payload);
+      saveChatMsgs();
+      // Only show toast if chat sheet not open for this order
+      if(chatOrderId !== orderId || !document.getElementById('chat-sheet')?.classList.contains('on')){
+        toast(`💬 ${payload.name}: ${payload.text.slice(0,40)}${payload.text.length>40?'…':''}`, 'ok', 4000);
+        playBeep();
+      }
+    })
+    .subscribe();
 }
 
 // SUPABASE REALTIME — CUSTOMER ORDER TRACKING
@@ -2363,12 +2552,34 @@ function startOrderRealtime(oid){
     },()=>{
       renderTracking(oid);
     })
+    // Background chat listener — notifies customer when rider sends a msg while chat is closed
+    .on('broadcast',{event:'msg'},({payload})=>{
+      if(!chatMsgs[oid]) chatMsgs[oid]=[];
+      chatMsgs[oid].push(payload);
+      saveChatMsgs();
+      // Only show toast if chat sheet isn't open for this order
+      if(chatOrderId !== oid || !document.getElementById('chat-sheet')?.classList.contains('on')){
+        toast(`💬 ${payload.name}: ${payload.text.slice(0,40)}${payload.text.length>40?'…':''}`, 'ok', 4000);
+        playBeep();
+      }
+    })
     .subscribe();
 }
 
 // RIDER ↔ CUSTOMER CHAT  (delivery fee negotiation)
 // Uses Supabase Realtime broadcast — no extra DB table required.
 // Channel name: order-chat-{orderId}
+
+// Chat persistence helpers — save/load keyed by orderId
+function saveChatMsgs(){
+  try{ localStorage.setItem('mb_chat', JSON.stringify(chatMsgs)); }catch{}
+}
+function loadChatMsgs(){
+  try{
+    const raw = localStorage.getItem('mb_chat');
+    if(raw) chatMsgs = JSON.parse(raw);
+  }catch{}
+}
 
 function ensureChatSheet(){
   if(document.getElementById('chat-sheet')) return;
@@ -2398,7 +2609,14 @@ function ensureChatSheet(){
 
 function openChat(orderId, myRole){
   ensureChatSheet();
-  chatOrderId=orderId; chatMyRole=myRole; chatMsgs=[];
+  chatOrderId=orderId; chatMyRole=myRole;
+  // Restore from localStorage if not in memory
+  if(!chatMsgs[orderId]){
+    try{
+      const saved = localStorage.getItem('kfc_chat_'+orderId);
+      chatMsgs[orderId] = saved ? JSON.parse(saved) : [];
+    }catch{ chatMsgs[orderId] = []; }
+  }
   renderChatMessages();
 
   // Quick-suggestion buttons (rider only)
@@ -2406,19 +2624,30 @@ function openChat(orderId, myRole){
   if(myRole==='rider'){
     qb.innerHTML=['KES 50','KES 100','KES 150','KES 200','KES 300','KES 500'].map(fee=>
       `<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="quickFee('${fee}')">${fee}</button>`
-    ).join('');
+    ).join('') +  `<button class="btn btn-primary btn-sm" style="font-size:.75rem;margin-top:6px;width:100%" 
+    onclick="setAgreedFee()">✅ Fee Agreed — Set Amount</button>`;
   } else {
     qb.innerHTML=['Sounds good! ✅','Can you do less?','KES 100 is fine','I accept 👍'].map(t=>
       `<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="quickFee('${t}')">${t}</button>`
     ).join('');
   }
 
+  function setAgreedFee(){
+  const fee = prompt('Enter the agreed delivery fee (KES):');
+  if(!fee || isNaN(parseInt(fee))) return;
+  riderState.agreedFee = parseInt(fee);
+  localStorage.setItem('kfc_agreed_fee', fee);
+  toast(`Fee set: KES ${fee} ✅`,'ok');
+  closeChat();
+}
+
   // Realtime broadcast channel for this order chat
   if(chatChannel){ chatChannel.unsubscribe().catch(()=>{}); }
   chatChannel=supa.channel('order-chat-'+orderId);
   chatChannel
     .on('broadcast',{event:'msg'},({payload})=>{
-      chatMsgs.push(payload);
+      chatMsgs[orderId] = chatMsgs[orderId] || [];
+      chatMsgs[orderId].push(payload);
       renderChatMessages();
       playBeep();
     })
@@ -2432,7 +2661,7 @@ function openChat(orderId, myRole){
       payload:{ orderId, customerName: user.name }
     });
   }, 500);
-}
+  } // end if myRole==='customer'
 
   document.getElementById('chat-ov').classList.add('on');
   document.getElementById('chat-sheet').classList.add('on');
@@ -2463,7 +2692,11 @@ async function sendChatMsg(){
     text,
     ts: Date.now()
   };
-  chatMsgs.push(msg);
+  if(!chatMsgs[chatOrderId]) chatMsgs[chatOrderId]=[];
+  chatMsgs[chatOrderId].push(msg);
+  // After chatMsgs[orderId].push(msg) in sendChatMsg() and the broadcast listener, add:
+localStorage.setItem('kfc_chat_'+chatOrderId, JSON.stringify(chatMsgs[chatOrderId]));
+  saveChatMsgs(); // persist before broadcast
   renderChatMessages();
   // Broadcast to the other side
   if(chatChannel){
@@ -2472,20 +2705,20 @@ async function sendChatMsg(){
 }
 
 function renderChatMessages(){
-  const el=document.getElementById('chat-msgs');
+  const el = document.getElementById('chat-msgs');
   if(!el) return;
-  if(!chatMsgs.length){
+  const msgs = chatMsgs[chatOrderId] || [];
+  if(!msgs.length){
     el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.82rem;padding:20px 0">No messages yet — say hello! 👋</div>';
     return;
   }
-  el.innerHTML=chatMsgs.map(m=>{
-    const isMine=m.role===chatMyRole;
-    const time=new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
+  el.innerHTML = msgs.map(m=>{
+    const isMine = m.role === chatMyRole;
+    const time = new Date(m.ts).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
     return `<div style="display:flex;flex-direction:column;align-items:${isMine?'flex-end':'flex-start'}">
       <div style="font-size:.68rem;color:var(--muted);margin-bottom:2px">${m.name} · ${time}</div>
       <div style="background:${isMine?'var(--red)':'var(--dark3)'};color:var(--white);padding:9px 13px;border-radius:${isMine?'14px 14px 2px 14px':'14px 14px 14px 2px'};max-width:80%;font-size:.87rem;word-break:break-word">${m.text}</div>
     </div>`;
   }).join('');
-  el.scrollTop=el.scrollHeight;
-}
+  el.scrollTop = el.scrollHeight;
 }
