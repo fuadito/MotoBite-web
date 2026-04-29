@@ -788,6 +788,7 @@ function exitRole(){
 
   riderState={name:'',phone:'',rating:0,deliveries:0,online:false,regStep:0,regData:{},activeOrder:null,collected:false,todayTrips:0,todayEarnings:0};
   localStorage.removeItem('kfc_kitchen');
+  localStorage.removeItem('kfc_pending_order');
 
   // If user arrived via ?role= URL — return to that role's login, not landing
   const urlRole = new URLSearchParams(window.location.search).get('role');
@@ -1790,28 +1791,34 @@ async function submitRating(){
 
 async function launchRider(){
     screen('s-rider');
-    startRiderRealtime(); // FIX: subscribe to dispatch broadcasts as soon as rider logs in
+    startRiderRealtime(); // subscribe to dispatch broadcasts immediately
 
-     // ADD — restore active delivery if rider refreshes mid-delivery
-  if(!riderState.activeOrder){
-    const saved = localStorage.getItem('kfc_active_delivery');
-    if(saved){
-      try{ riderState.activeOrder = JSON.parse(saved); 
-           riderState.collected = false; // reset collected state
-      }catch{}
+    // Restore active delivery if rider refreshes mid-delivery
+    if(!riderState.activeOrder){
+      const saved = localStorage.getItem('kfc_active_delivery');
+      if(saved){ try{ riderState.activeOrder=JSON.parse(saved); riderState.collected=false; }catch{} }
     }
-  }
+
+    // Restore a pending (dispatched but not yet accepted) order
+    // This is the order the rider missed while they were in another app
+    if(!riderState.activeOrder && !riderState.pendingOrder){
+      const pending = localStorage.getItem('kfc_pending_order');
+      if(pending){ try{ riderState.pendingOrder=JSON.parse(pending); }catch{} }
+    }
 
     if(!riderState.name){
         riderState.regStep=0;
         renderRiderReg();
     } else {
         renderRiderHome();
-        // If has active order — go straight to delivery, skip the alert
-    if(riderState.activeOrder){
-      rPanel('delivery', document.querySelector('[data-s="delivery"]'));
+        if(riderState.activeOrder){
+          // Already on a delivery — go straight to delivery tab
+          rPanel('delivery', document.querySelector('[data-s="delivery"]'));
+        } else if(riderState.pendingOrder){
+          // Missed a dispatch while away — show the order alert now
+          requestAnimationFrame(() => showRiderOrderAlert(riderState.pendingOrder));
+        }
     }
-  }
 }
 
 function rPanel(id,btn=null){
@@ -2103,39 +2110,37 @@ function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}
 
 function acceptOrder(){
   if(oTimer) clearInterval(oTimer);
+  // Promote pendingOrder to activeOrder if needed (case: rider returned from another app)
+  if(!riderState.activeOrder && riderState.pendingOrder){
+    riderState.activeOrder = riderState.pendingOrder;
+  }
+  riderState.pendingOrder = null;
+  localStorage.removeItem('kfc_pending_order');
+
   apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {method:'POST'});
   localStorage.setItem('kfc_active_delivery', JSON.stringify(riderState.activeOrder));
 
-  // ADD — listen for chat requests on this specific order
+  // Listen for chat on this order
   const orderId = riderState.activeOrder.id;
-  supa.channel('order-chat-'+orderId)
-    .on('broadcast',{event:'chat_request'},({payload})=>{
-      toast(`💬 ${payload.customerName} wants to chat about delivery fee!`,'ok',6000);
-      playBeep();
-    })
-    .on('broadcast',{event:'msg'},({payload})=>{
-      // Show notification if chat is not open
-      if(chatOrderId !== orderId){
-        toast(`💬 New message from customer`,'ok',4000);
-        playBeep();
-      }
-    })
-    .subscribe();
+  startRiderChatListener(orderId);
 
   toast('Order accepted! Head to KFC Narok 🏍️','ok');
-  document.getElementById('r-alert-zone').innerHTML='';
+  const alertZone = document.getElementById('r-alert-zone');
+  if(alertZone) alertZone.innerHTML='';
   riderState.collected=false;
   rPanel('delivery', document.querySelector('[data-s="delivery"]'));
 }
 
 function declineOrder(){
   if(oTimer) clearInterval(oTimer);
-  document.getElementById('r-alert-zone').innerHTML='';
-  // ADD — tell backend this rider declined
+  const alertZone = document.getElementById('r-alert-zone');
+  if(alertZone) alertZone.innerHTML='';
   if(riderState.activeOrder?.id){
     apiFetch(`/api/orders/${riderState.activeOrder.id}/decline`, {method:'POST'});
   }
-  riderState.activeOrder=null;
+  riderState.activeOrder  = null;
+  riderState.pendingOrder = null;
+  localStorage.removeItem('kfc_pending_order');
   toast('Order passed');
 } 
 
@@ -3133,55 +3138,88 @@ function startRiderRealtime(){
   const phone=riderState.phone||user.phone;
   if(!phone) return;
 
-  // Request browser notification permission as soon as rider goes online
   requestNotifPermission();
 
-  // Unsubscribe existing channels
+  // ── Clean up any stale channels before re-subscribing ────────────────────
   supa.channel('rider-dispatch').unsubscribe().catch(()=>{});
+  supa.channel('rider-assigned-'+phone).unsubscribe().catch(()=>{});
 
-  // Listen for broadcast dispatch events from the backend
-  supa.channel('rider-dispatch')
-    .on('broadcast',{event:'new_order'},({payload})=>{
-      if(!riderState.online||riderState.activeOrder) return;
-      riderState.activeOrder=payload;
-      // System notification — shows even if rider is in another app
-      '🔔 New Delivery Order!',sendSystemNotif(
-        '🔔 New Delivery Order!',
-        `Deliver to ${payload.customer_area} · KES ${payload.food_amount}`,
-        () => { rPanel('home'); renderRiderHome(); showRiderOrderAlert(payload); }
-      );
-      playBeep();
-      if(document.getElementById('s-rider')?.classList.contains('on')){
-        renderRiderHome();
-        showRiderOrderAlert(payload);
-      } else {
-        // Rider is in app but on different screen — show persistent banner
-        showChatBanner(payload.id, 'MotoBite', `New order: deliver to ${payload.customer_area}`, 'rider');
+  // ── Handler shared by both dispatch broadcast AND postgres direct-assign ──
+  // Extracted so the exact same logic fires regardless of delivery path.
+  function handleIncomingOrder(payload){
+    // Guard: don't accept if already on a delivery
+    if(riderState.activeOrder) return;
+
+    // BUG FIX 1: Store order in BOTH riderState AND localStorage immediately.
+    // Previously the order was only set in riderState — if the rider switched
+    // tabs/apps and came back, the dispatch broadcast was long gone and
+    // riderState was reset, so the order vanished.
+    riderState.pendingOrder = payload;   // keep pending until accepted/expired
+    localStorage.setItem('kfc_pending_order', JSON.stringify(payload));
+
+    // BUG FIX 2: System notification fires correctly.
+    // Previously had a stray string literal before sendSystemNotif():
+    //   '🔔 New Delivery Order!', sendSystemNotif(...)
+    // That made sendSystemNotif a comma-expression arg — the onClick callback
+    // was never registered, so tapping the notification did nothing.
+    sendSystemNotif(
+      '🔔 New Delivery Order!',
+      `Deliver to ${payload.customer_area} · KES ${payload.delivery_fee || payload.food_amount}`,
+      () => {
+        window.focus();
+        // BUG FIX 3: rPanel('home') without a btn arg leaves the nav tab
+        // highlight on whichever tab the rider was on. Pass the actual DOM button.
+        const homeBtn = document.querySelector('#s-rider .bnav-btn[data-s="home"]');
+        rPanel('home', homeBtn);
+        // BUG FIX 4: renderRiderHome() creates a fresh #r-alert-zone but
+        // showRiderOrderAlert() reads that element immediately after — in the
+        // same synchronous call stack, before the browser has painted.
+        // A single rAF ensures the DOM is settled before we inject the alert HTML.
+        requestAnimationFrame(() => showRiderOrderAlert(payload));
       }
-    })
-    .subscribe();
+    );
 
-  // Also watch for direct assignment on orders table
+    playBeep();
+
+    // BUG FIX 5: The old check was `s-rider.classList.contains('on')` which
+    // is true whenever the rider section is the active screen — but the rider
+    // could be on the Earnings or Delivery tab, where #r-alert-zone doesn't
+    // exist yet (it's only created inside renderRiderHome's innerHTML).
+    // Solution: always navigate home AND show the alert, whether the rider
+    // is in the app or not.
+    const homeBtn = document.querySelector('#s-rider .bnav-btn[data-s="home"]');
+    rPanel('home', homeBtn);
+    requestAnimationFrame(() => showRiderOrderAlert(payload));
+  }
+
+  // ── Broadcast channel — backend dispatches new orders here ───────────────
+  supa.channel('rider-dispatch')
+    .on('broadcast', { event:'new_order' }, ({ payload }) => {
+      if(!riderState.online || riderState.activeOrder) return;
+      handleIncomingOrder(payload);
+    })
+    .subscribe(status => {
+      // BUG FIX: Reconnect automatically if Supabase drops the channel
+      // (happens when browser tab goes to background for >30 s on some devices)
+      if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        console.warn('[Realtime] rider-dispatch channel lost, reconnecting in 3 s…');
+        setTimeout(startRiderRealtime, 3000);
+      }
+    });
+
+  // ── Postgres fallback — catches direct DB assignment (admin overrides) ───
   supa.channel('rider-assigned-'+phone)
-    .on('postgres_changes',{
+    .on('postgres_changes', {
       event:'UPDATE', schema:'public', table:'orders',
       filter:`rider_phone=eq.${phone}`
-    },({new:o})=>{
-      if(o.status==='rider_assigned'&&!riderState.activeOrder){
-        riderState.activeOrder=o;
-        sendSystemNotif(
-          '🔔 Order Assigned to You!',
-          `Deliver to ${o.customer_area}`,
-          () => { rPanel('home'); renderRiderHome(); showRiderOrderAlert(o); }
-        );
-        playBeep();
-        renderRiderHome();
-        showRiderOrderAlert(o);
+    }, ({ new:o }) => {
+      if(o.status === 'rider_assigned' && !riderState.activeOrder){
+        handleIncomingOrder(o);
       }
     })
     .subscribe();
 
-  // Listen for chat pings (resend notifications from the other side)
+  // ── Chat listener for any already-active order ────────────────────────────
   if(riderState.activeOrder?.id){
     startRiderChatListener(riderState.activeOrder.id);
   }
