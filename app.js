@@ -842,6 +842,15 @@ async function launchCustomer(){
                    localStorage.removeItem('mb_active_order');
         }
     }
+
+    // Act on notification tap intent that survived a page reload
+    if(window._pendingNotifIntent){
+      const intent = window._pendingNotifIntent;
+      window._pendingNotifIntent = null;
+      if(intent.action === 'openChat' && intent.orderId){
+        setTimeout(() => openChat(intent.orderId, intent.role || 'customer'), 400);
+      }
+    }
 }
 
 
@@ -1854,6 +1863,19 @@ async function launchRider(){
           // Missed a dispatch while away — show the order alert now
           requestAnimationFrame(() => showRiderOrderAlert(riderState.pendingOrder));
         }
+        // Act on notification tap intent that survived a page reload
+        if(window._pendingNotifIntent){
+          const intent = window._pendingNotifIntent;
+          window._pendingNotifIntent = null;
+          setTimeout(() => {
+            if(intent.action === 'openChat' && intent.orderId){
+              openChat(intent.orderId, intent.role || 'rider');
+            } else if(intent.action === 'showOrder' && riderState.pendingOrder){
+              showRiderOrderAlert(riderState.pendingOrder);
+            }
+          }, 400); // brief delay ensures renderRiderHome DOM is ready
+        }
+
     }
 }
 
@@ -2955,6 +2977,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+    // ── Notification intent recovery (survives page reload) ───────────────────
+  // Android Chrome reloads the tab when a notification is tapped.
+  // window._notifClickCb is lost on reload, but we wrote the intent to
+  // localStorage before firing — read it back and act on it after session restore.
+  try {
+    const intentRaw = localStorage.getItem('mb_notif_intent');
+    if(intentRaw){
+      const intent = JSON.parse(intentRaw);
+      const age = Date.now() - (intent.ts || 0);
+      localStorage.removeItem('mb_notif_intent'); // consume once — never replay
+      if(age < 30000) window._pendingNotifIntent = intent; // hand off to launchRider/launchCustomer
+    }
+  } catch(e) {}
   const saved = localStorage.getItem('mb_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
 
@@ -3157,8 +3193,19 @@ async function requestNotifPermission(){
   }
 }
 
-async function sendSystemNotif(title, body, onClick){
+async function sendSystemNotif(title, body, onClick, intentData){
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
+
+   // Store the navigation intent in localStorage BEFORE firing the notification.
+  // If Android Chrome reloads the tab when the user taps the notification,
+  // window._notifClickCb is gone — but localStorage survives the reload.
+  // The app startup code reads 'mb_notif_intent' and opens the right screen.
+  if(intentData){
+    localStorage.setItem('mb_notif_intent', JSON.stringify({
+      ...intentData,
+      ts: Date.now()
+    }));
+  }
 
   const opts = {
     body,
@@ -3168,6 +3215,7 @@ async function sendSystemNotif(title, body, onClick){
     renotify:         true,              // re-triggers sound/vibration even with same tag
     requireInteraction: true,            // stays on screen — does NOT auto-close
     vibrate:          [200, 100, 200],   // vibration pattern on mobile
+    data:             intentData || {},  // SW reads this on notificationclick 
   };
 
   // Prefer ServiceWorker.showNotification — works on Android Chrome even when
@@ -3321,7 +3369,8 @@ async function startRiderRealtime(){
         // same synchronous call stack, before the browser has painted.
         // A single rAF ensures the DOM is settled before we inject the alert HTML.
         requestAnimationFrame(() => showRiderOrderAlert(payload));
-      }
+      }, 
+      { action: 'showOrder', orderId: payload.id }
     );
 
     playBeep();
