@@ -1215,291 +1215,234 @@ function removeCartItem(i){
 
 
  
-// ── LOCATION MAP PICKER ───────────────────────────────────────────────────────
-// Uses Leaflet + OpenStreetMap — no API key needed.
-// Strategy:
-//   1. Open the section → initialise the map centred on Narok Town
-//   2. Try GPS — if it arrives, move the pin there automatically
-//   3. Customer can drag the pin OR use the search box to correct any inaccuracy
-//   4. "Use This Location" validates distance and stores coordinates in userLoc
+// ══════════════════════════════════════════════════════════════════════════════
+// LOCATION SYSTEM  —  3-path UX  (GPS → area chips → type landmark)
+// Matches the HTML in cp-location: no map, no dragging, no technical concepts.
+//
+// Flow:
+//   1. Panel opens → GPS fires automatically (user does nothing)
+//   2a. GPS good + within zone → green confirmed box → one tap to continue
+//   2b. GPS bad/out-of-zone   → area picker shown automatically
+//   3. Area picker: tap a neighbourhood chip → confirm button lights up
+//   4. Landmark field: type any extra detail (optional but helpful for rider)
+// ══════════════════════════════════════════════════════════════════════════════
 
-const KFC_LAT =  -1.0907;
+const KFC_LAT = -1.0907;
 const KFC_LNG =  35.8710;
 const MAX_KM  =  50;
 
-let _locMap    = null;  // Leaflet map instance
-let _locMarker = null;  // draggable pin
-let _gpsLat    = null;  // raw GPS coords (may be inaccurate — used for re-centre only)
-let _gpsLng    = null;
+// Known Narok-area delivery spots — shown as tappable chips
+const NAROK_AREAS = [
+  { name:'Narok Town Centre',   lat:-1.0867, lng:35.8716 },
+  { name:'Narok Hospital',      lat:-1.0806, lng:35.8677 },
+  { name:'Maasai Mara Uni',     lat:-1.1102, lng:35.8430 },
+  { name:'Narok Stage',         lat:-1.0880, lng:35.8695 },
+  { name:'Shell Petrol Station',lat:-1.0921, lng:35.8744 },
+  { name:'Total Petrol Station',lat:-1.0855, lng:35.8720 },
+  { name:'KCB / ABSA Bank',     lat:-1.0872, lng:35.8708 },
+  { name:'Ewaso Estate',        lat:-1.0950, lng:35.8660 },
+  { name:'Naserian Estate',     lat:-1.0930, lng:35.8680 },
+  { name:'Police Station',      lat:-1.0841, lng:35.8699 },
+  { name:'Narok Stadium',       lat:-1.0990, lng:35.8750 },
+  { name:'Nakuru Road Area',    lat:-1.0820, lng:35.8760 },
+  { name:'Oloolaimutia',        lat:-1.0750, lng:35.8800 },
+  { name:'Melelo',              lat:-1.0650, lng:35.8550 },
+];
 
-// Called when customer taps "Confirm Order →" from cart → opens location panel
+let _gpsLat = null;
+let _gpsLng = null;
+let _selectedArea = null; // { name, lat, lng } from chip tap
+
+// ── Open panel ────────────────────────────────────────────────────────────────
 function cPanelLocation(){
   cPanel('location');
-   if(_locMap){
-    // Map already exists — panel just became visible, fix its size with two
-    // rAFs so the CSS 'on' class has definitely been painted before Leaflet
-    // measures the container dimensions.
-    requestAnimationFrame(() => requestAnimationFrame(() => _locMap.invalidateSize()));
-    return;
-  }
-  setTimeout(initLocMap, 80); // first visit: brief delay for layout
-}
-
-
-function initLocMap(){
-  // If map already initialised — just refresh size and return
-  if(_locMap){
-    _locMap.invalidateSize();
-    return;
-  }
-
-  const container = document.getElementById('loc-map');
-  if(!container) return;
-
-  // Start centred on Narok Town
-  _locMap = L.map('loc-map', { zoomControl: true, attributionControl: false })
-    .setView([KFC_LAT, KFC_LNG], 14);
-
-  // OpenStreetMap tiles — free, no key
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-  }).addTo(_locMap);
-
-  // KFC marker (fixed red icon)
-  const kfcIcon = L.divIcon({
-    html: '<div style="background:#e8002d;color:#fff;font-size:11px;font-weight:700;padding:3px 6px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4)">KFC Narok</div>',
-    iconAnchor: [36, 10],
-    className: ''
-  });
-  L.marker([KFC_LAT, KFC_LNG], {icon: kfcIcon}).addTo(_locMap);
-
-  // Customer pin — draggable blue pin, starts on Narok town centre
-  const pinIcon = L.divIcon({
-    html: `<div style="
-      width:32px;height:32px;
-      background:#2979ff;border:3px solid #fff;
-      border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg);
-      box-shadow:0 3px 10px rgba(0,0,0,.4)">
-    </div>`,
-    iconSize:   [32, 32],
-    iconAnchor: [16, 32],
-    className: ''
-  });
-
-  _locMarker = L.marker([KFC_LAT, KFC_LNG], { icon: pinIcon, draggable: true })
-    .addTo(_locMap);
-
-  // Update status bar every time the pin moves
-  _locMarker.on('drag dragend', () => updateLocStatus());
-
-  setLocStatus('🔵 Map centred on Narok Town. Drag the blue pin to your exact delivery address, or search above.');
-  enableLocBtn(true); // allow immediate manual placement — don't block on GPS
-
-  // Try GPS — async, non-blocking
+  // Reset to clean state every time panel opens
+  _gpsLat = null; _gpsLng = null; _selectedArea = null;
+  resetLocUI();
+  populateAreaGrid();
   tryGPS();
 }
 
+function resetLocUI(){
+  setEl('loc-gps-bar',       { display:'flex' });
+  setEl('loc-gps-confirmed', { display:'none' });
+  setEl('loc-area-picker',   { display:'none' });
+  setEl('loc-err-box',       { text:'', cls:'hidden' });
+  const lbl = document.getElementById('loc-landmark');
+  if(lbl) lbl.value = '';
+  enableLocBtn(false);
+  setGpsStatus('📡', 'Getting your location…', false);
+}
+
+// ── Helper: set element display/text quickly ──────────────────────────────────
+function setEl(id, opts={}){
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(opts.display !== undefined) el.style.display = opts.display;
+  if(opts.text    !== undefined) el.textContent = opts.text;
+  if(opts.html    !== undefined) el.innerHTML = opts.html;
+  if(opts.cls     !== undefined){ el.className=''; if(opts.cls) el.className=opts.cls; }
+}
+
+function setGpsStatus(ico, txt, showRetry=false){
+  setEl('loc-gps-ico', { text: ico });
+  setEl('loc-gps-txt', { text: txt });
+  const retry = document.getElementById('loc-gps-retry');
+  if(retry) retry.style.display = showRetry ? 'inline' : 'none';
+}
+
+// ── GPS ───────────────────────────────────────────────────────────────────────
 function tryGPS(){
+  setGpsStatus('📡', 'Getting your location…', false);
   if(!navigator.geolocation){
-    setLocStatus('⚠️ GPS not available — drag the pin to your location');
+    onGPSFail({ code:2 });
     return;
   }
-  setLocStatus('<span class="spin"></span>&nbsp; Getting GPS…');
-  navigator.geolocation.getCurrentPosition(
-    pos => onGPSSuccess(pos),
-    err => onGPSFail(err),
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-  );
+  navigator.geolocation.getCurrentPosition(onGPSSuccess, onGPSFail,
+    { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
 }
 
 function onGPSSuccess(pos){
-  const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+  const { latitude:lat, longitude:lng, accuracy } = pos.coords;
+  const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
 
-  const distFromKFC = haversine(lat, lng, KFC_LAT, KFC_LNG);
-
-  // If the returned position is outside the 50 km zone it is almost certainly
-  // an IP-based ISP estimate (e.g. Nairobi) rather than the device's real GPS.
-  // Never move the map in that case — keep it centred on Narok Town so the
-  // customer can drag the pin to their actual address.
-  if(distFromKFC > MAX_KM){
-    _gpsLat = null; _gpsLng = null; // discard — useless for re-centring too
-    setLocStatus(
-      `⚠️ GPS returned a location ${Math.round(distFromKFC)} km away — ` +
-      `this is likely your internet provider's address, not yours. ` +
-      `Drag the blue pin to your actual location in Narok.`
-    );
-    enableLocBtn(true);  // let them place manually
+  // Out of zone = ISP address (Nairobi), not real device GPS
+  if(dist > MAX_KM){
+    setGpsStatus('⚠️', `GPS shows you ${Math.round(dist)} km away — please choose your area below`, true);
+    showAreaPicker();
     return;
   }
 
-  // Within zone — safe to trust this position
+  // Good GPS — store and show confirmed box
   _gpsLat = lat; _gpsLng = lng;
-  _locMap.setView([lat, lng], 16);
-  _locMarker.setLatLng([lat, lng]);
 
-  const accText = accuracy < 50  ? '✅ High accuracy GPS'
-                : accuracy < 200 ? '⚠️ Moderate GPS accuracy — drag pin if needed'
-                :                  '⚠️ Low GPS accuracy — drag pin to your exact spot';
-  setLocStatus(`${accText} (±${Math.round(accuracy)}m)`);
-  updateLocStatus();
+  const accLabel = accuracy < 50  ? `±${Math.round(accuracy)}m (high accuracy)`
+                 : accuracy < 200 ? `±${Math.round(accuracy)}m — tap "Not right?" if off`
+                 :                  `±${Math.round(accuracy)}m (approximate)`;
+
+  setGpsStatus('✅', 'Location found', false);
+  setEl('loc-gps-bar', { display:'none' });
+
+  // Reverse geocode — get area name silently in background
+  reverseGeocode(lat, lng).then(areaName => {
+    _selectedArea = { lat, lng, name: areaName };
+    setEl('loc-gps-area', { text: areaName });
+    setEl('loc-gps-dist', { text: `${dist.toFixed(1)} km from KFC Narok  ·  ${accLabel}` });
+    setEl('loc-gps-confirmed', { display:'block' });
+    enableLocBtn(true);
+  });
 }
 
 function onGPSFail(err){
-  _gpsLat = null; _gpsLng = null;
   const msg = err.code === 1
-    ? '🔒 GPS access denied — drag the pin to your delivery address'
-    : '⚠️ GPS unavailable — drag the pin to your location';
-  setLocStatus(msg);
-  enableLocBtn(true); // map is already centred on Narok — just let them drag
+    ? '📍 Location access denied — choose your area below'
+    : '📍 GPS unavailable — choose your area below';
+  setGpsStatus('📍', msg, true);
+  showAreaPicker();
 }
 
-function recenterOnGPS(){
-  if(_gpsLat && _gpsLng){
-    // Only re-centre if the stored GPS position is actually in the delivery zone
-    const dist = haversine(_gpsLat, _gpsLng, KFC_LAT, KFC_LNG);
-    if(dist > MAX_KM){
-      setLocStatus(`⚠️ GPS position is ${Math.round(dist)} km away — looks like an ISP address. Drag the pin manually.`);
-      return;
+// ── Area picker ───────────────────────────────────────────────────────────────
+function populateAreaGrid(){
+  const grid = document.getElementById('loc-area-grid');
+  if(!grid) return;
+  grid.innerHTML = NAROK_AREAS.map((a,i) => `
+    <button onclick="selectArea(${i})" id="area-chip-${i}"
+      style="padding:11px 8px;background:var(--dark3);border:1.5px solid var(--line2);
+             border-radius:10px;color:var(--white);font-size:.8rem;font-weight:600;
+             cursor:pointer;text-align:center;line-height:1.25;transition:all .15s">
+      ${a.name}
+    </button>`).join('');
+}
+
+function showAreaPicker(){
+  setEl('loc-area-picker', { display:'block' });
+}
+
+function selectArea(i){
+  const area = NAROK_AREAS[i];
+  if(!area) return;
+  _selectedArea = { lat:area.lat, lng:area.lng, name:area.name };
+
+  // Highlight selected chip, reset others
+  NAROK_AREAS.forEach((_,j) => {
+    const chip = document.getElementById(`area-chip-${j}`);
+    if(!chip) return;
+    if(j === i){
+      chip.style.background     = 'var(--red)';
+      chip.style.borderColor    = 'var(--red)';
+      chip.style.color          = '#fff';
+    } else {
+      chip.style.background     = 'var(--dark3)';
+      chip.style.borderColor    = 'var(--line2)';
+      chip.style.color          = 'var(--white)';
     }
-    _locMap.setView([_gpsLat, _gpsLng], 17);
-    _locMarker.setLatLng([_gpsLat, _gpsLng]);
-    updateLocStatus();
-  } else {
-    setLocStatus('<span class="spin" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>Trying GPS again…');
-    tryGPS();
+  });
+
+  enableLocBtn(true);
+  setEl('loc-err-box', { text:'', cls:'hidden' });
+}
+
+function onLandmarkInput(){
+  // If no area chip is selected yet, treat a typed landmark as confirmation too
+  const val = document.getElementById('loc-landmark')?.value.trim();
+  if(val && val.length >= 3 && !_selectedArea){
+    // Use KFC location as lat/lng fallback — rider uses the landmark text to navigate
+    _selectedArea = { lat: KFC_LAT, lng: KFC_LNG, name:'Narok Town' };
   }
+  if(val || _selectedArea) enableLocBtn(true);
 }
 
-function updateLocStatus(){
-  const { lat, lng } = _locMarker.getLatLng();
-  const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
+// ── Confirm ───────────────────────────────────────────────────────────────────
+function confirmLocation(){
+  const landmark = document.getElementById('loc-landmark')?.value.trim();
+  const errBox   = document.getElementById('loc-err-box');
 
-  if(dist > MAX_KM){
-    setLocStatus(`❌ ${dist.toFixed(1)} km from KFC Narok — outside 50 km delivery zone`);
-    enableLocBtn(false);
-  } else {
-    setLocStatus(`✅ ${dist.toFixed(1)} km from KFC Narok — within delivery zone`);
-    enableLocBtn(true);
-  }
-}
-
-function setLocStatus(html){
-  const el = document.getElementById('loc-status-txt');
-  if(!el) return;
-  el.innerHTML = html;
-}
-
-function enableLocBtn(on){
-  const btn = document.getElementById('loc-btn');
-  if(!btn) return;
-  btn.disabled = !on;
-  btn.style.opacity = on ? '1' : '0.45';
-}
-
-// Called when customer taps "Use This Location"
-async function confirmMapLocation(){
-  const btn = document.getElementById('loc-btn');
-  const errBox = document.getElementById('loc-err-box');
-  if(!_locMarker) return;
-
-  const { lat, lng } = _locMarker.getLatLng();
-  const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
-
-  errBox.classList.add('hidden');
-
-  if(dist > MAX_KM){
-    errBox.textContent = `❌ You're ${dist.toFixed(1)} km away. We only deliver within ${MAX_KM} km of KFC Narok.`;
+  if(!_selectedArea && !landmark){
+    errBox.textContent = 'Please choose your area or type a landmark first.';
     errBox.classList.remove('hidden');
     return;
   }
 
-  btn.innerHTML = '<span class="spin"></span> Confirming…';
-  btn.disabled = true;
+  // Merge GPS coords if available and better than chip coords
+  const lat  = (_gpsLat && haversine(_gpsLat, _gpsLng, KFC_LAT, KFC_LNG) <= MAX_KM)
+               ? _gpsLat : (_selectedArea?.lat ?? KFC_LAT);
+  const lng  = (_gpsLng && haversine(_gpsLat, _gpsLng, KFC_LAT, KFC_LNG) <= MAX_KM)
+               ? _gpsLng : (_selectedArea?.lng ?? KFC_LNG);
 
-  // Reverse geocode to get human-readable area name
-  let areaName = 'Narok Town';
+  const areaName   = _selectedArea?.name || 'Narok Town';
+  const fullLabel  = landmark ? `${areaName} — ${landmark}` : areaName;
+
+  userLoc = { lat, lng, areaName: fullLabel, landmark: landmark || '' };
+  toast(`📍 Delivering to: ${fullLabel}`, 'ok');
+  goToPayment();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function enableLocBtn(on){
+  const btn = document.getElementById('loc-btn');
+  if(!btn) return;
+  btn.disabled     = !on;
+  btn.style.opacity = on ? '1' : '0.45';
+  btn.textContent  = on ? 'Confirm Location →' : 'Confirm Location →';
+}
+
+async function reverseGeocode(lat, lng){
   try {
-    const geo = await fetch(
+    const r = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-      { headers: { 'Accept-Language': 'en' } }
+      { headers:{ 'Accept-Language':'en' } }
     );
-    const gd = await geo.json();
-    const a  = gd.address || {};
-    areaName = a.township || a.suburb || a.village || a.town
-             || a.city_district || a.city || a.county || 'Narok Town';
-  } catch { /* keep default */ }
-
-  userLoc = { lat, lng, areaName };
-
-  btn.innerHTML = `✅ ${areaName} confirmed (${dist.toFixed(1)} km)`;
-  btn.disabled  = false;
-  btn.onclick   = goToPayment;
-  setLocStatus(`📍 Delivering to: <strong style="color:var(--white)">${areaName}</strong> · ${dist.toFixed(1)} km from KFC`);
-
-  toast(`📍 Location set: ${areaName}`, 'ok');
+    const d = await r.json();
+    const a = d.address || {};
+    return a.township || a.suburb || a.village || a.town
+           || a.city_district || a.city || a.county || 'Narok Town';
+  } catch { return 'Narok Town'; }
 }
 
-// ── LOCATION SEARCH (Nominatim autocomplete) ──────────────────────────────────
-let _locSearchTimer = null;
-
-function locSearchDebounce(){
-  clearTimeout(_locSearchTimer);
-  _locSearchTimer = setTimeout(runLocSearch, 400);
-}
-
-async function runLocSearch(){
-  const q = document.getElementById('loc-search')?.value.trim();
-  const results = document.getElementById('loc-search-results');
-  if(!q || q.length < 3){ if(results) results.style.display='none'; return; }
-
-  try {
-    const res  = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q+' Kenya')}&format=json&limit=5&addressdetails=1`,
-      { headers: { 'Accept-Language': 'en' } }
-    );
-    const data = await res.json();
-
-    if(!results) return;
-    if(!data.length){ results.style.display='none'; return; }
-
-    results.innerHTML = data.map((r,i) => `
-      <div onclick="selectLocResult(${r.lat},${r.lon},'${(r.display_name||'').replace(/'/g,'').slice(0,60)}')"
-        style="padding:10px 14px;font-size:.82rem;cursor:pointer;border-bottom:1px solid var(--line);
-               color:var(--white);transition:background .15s"
-        onmouseover="this.style.background='var(--dark3)'"
-        onmouseout="this.style.background='transparent'">
-        📍 ${(r.display_name||'').slice(0,70)}
-      </div>`).join('');
-    results.style.display = 'block';
-
-  } catch {
-    if(results) results.style.display = 'none';
-  }
-}
-
-function selectLocResult(lat, lng, label){
-  lat = parseFloat(lat); lng = parseFloat(lng);
-  _locMap.setView([lat, lng], 16);
-  _locMarker.setLatLng([lat, lng]);
-  updateLocStatus();
-
-  const inp = document.getElementById('loc-search');
-  if(inp) inp.value = label;
-  const results = document.getElementById('loc-search-results');
-  if(results) results.style.display = 'none';
-}
-
-// ── Legacy getLocation() — kept so any old references still work ──────────────
-function getLocation(){ initLocMap(); }
-
-// Hide search results when clicking outside
-document.addEventListener('click', e => {
-  if(!e.target.closest('#loc-search') && !e.target.closest('#loc-search-results')){
-    const r = document.getElementById('loc-search-results');
-    if(r) r.style.display = 'none';
-  }
-});
+// Legacy stubs — keep so any old references don't crash
+function getLocation(){ cPanelLocation(); }
+function initLocMap(){  cPanelLocation(); }
+function recenterOnGPS(){ tryGPS(); }
 function goToPayment(){
   const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
   document.getElementById('pay-amt').textContent=F.money(total);
@@ -2116,30 +2059,36 @@ function showRiderOrderAlert(o){
     if(!z) return;
     let t=180;
 
-    const lat = o.location?.lat || o.customer_lat;
-    const lng = o.location?.lng || o.customer_lng;
+  // Prefer top-level lat/lng (set by dispatch.js) over nested location object
+    const lat = o.customer_lat || o.location?.lat;
+    const lng = o.customer_lng || o.location?.lng;
 
     // OpenStreetMap location preview — no API key needed
     const mapHtml = (lat && lng) ? `
       <div style="margin:10px 0;border-radius:10px;overflow:hidden;height:155px;position:relative;border:1px solid var(--line2)">
         <iframe
-          src="https://www.openstreetmap.org/export/embed.html?bbox=${(lng-0.04).toFixed(5)},${(lat-0.04).toFixed(5)},${(lng+0.04).toFixed(5)},${(lat+0.04).toFixed(5)}&layer=mapnik&marker=${lat},${lng}"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=${(lng-0.012).toFixed(6)},${(lat-0.012).toFixed(6)},${(lng+0.012).toFixed(6)},${(lat+0.012).toFixed(6)}&layer=mapnik&marker=${lat},${lng}"
           style="width:100%;height:100%;border:0;pointer-events:none" loading="lazy">
         </iframe>
         <div style="position:absolute;bottom:0;right:0;background:rgba(0,0,0,.65);padding:3px 7px;font-size:.68rem;border-radius:4px 0 0 0;color:#fff">
           📍 Customer location
         </div>
       </div>
-      <a href="https://www.google.com/maps/dir/?api=1&origin=-1.0833,35.8667&destination=${lat},${lng}"
+      <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving"
          target="_blank"
          style="display:block;background:#1565c0;color:#fff;text-align:center;padding:9px;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600;margin:4px 0">
         🗺️ Open Navigation (Google Maps)
       </a>` : '';
 
+         // Build full delivery hint: "Area — Landmark" for rider to read
+    const delivHint = o.delivery_hint
+      || [o.customer_area, o.landmark].filter(Boolean).join(' — ')
+      || 'Narok Town';
+
     z.innerHTML=`<div class="o-alert">
     <div class="oa-top"><div class="oa-title">🔔 NEW ORDER!</div><div class="oa-timer" id="ot">${fmtTime(t)}</div></div>
     <div class="oa-detail">📍 Collect: KFC Narok</div>
-    <div class="oa-detail">📍 Deliver to: <strong>${o.customer_area}</strong>${o.distance_km ? ` · ~${o.distance_km} km` : ''}</div>
+    <div class="oa-detail">📍 Deliver to: <strong>${delivHint}</strong></div>
     <div class="oa-detail" style="color:var(--green);font-weight:700;font-size:.92rem">💰 Delivery Fee: KES ${o.delivery_fee > 0 ? o.delivery_fee : '—  (agree via chat)'}</div>
     ${mapHtml}
     <div class="oa-items" style="margin-top:8px">${(o.items||[]).map(i=>`• ${i.name}${i.note?` (${i.note})`:''}`).join('<br>')}</div>
@@ -2223,7 +2172,7 @@ function renderRiderDelivery(){
         <div class="receipt-note">Show this screen to KFC staff at the counter</div>
       </div>
       <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.85rem">
-        📍 Deliver to: <strong>${o.customer_area}</strong><br>
+        📍 Deliver to: <strong>${o.delivery_hint || [o.customer_area, o.landmark].filter(Boolean).join(' — ') || o.customer_area}</strong><br>
         💰 Delivery fee: <strong style="color:var(--green)">${riderState.agreedFee ? `KES ${riderState.agreedFee} (agreed)` : 'Agree with customer'}</strong> - collect cash at door
       </div>
 
