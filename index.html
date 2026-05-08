@@ -3,29 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#e8002d">
-    <meta name="description" content="MotoBite — Fast food delivery in Narok Town. Order from KFC Narok and track your rider live.">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="MotoBite">
-    <title>MotoBite — Delivery Platform</title>
+    <title>MotoBite -Delivery Platform</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <link rel="stylesheet" href="style.css">
-    <!-- ─── Favicons ──────────────────────────────────────────────────────── -->
-      <!-- ICO — legacy fallback (IE, very old browsers) -->
-    <link rel="shortcut icon" href="favicon.ico">
-    <!-- SVG favicon — scales perfectly at any size, shown in modern browsers -->
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <!-- PNG favicon — fallback for browsers that don't support SVG favicons -->
-    <link rel="icon" href="favicon-96x96.png" sizes="96x96" type="image/png">
-    <!-- Apple touch icon — home screen icon on iOS when added to home screen -->
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <!-- Web app manifest — enables Add to Home Screen on Android/Chrome -->
-    <link rel="manifest" href="site.webmanifest">
-    <script src="app.js" defer></script>
+    <link rel="icon" href="/favicon.ico">
+
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
 </head>
 <body>
@@ -41,9 +29,7 @@
     <div class="land-grid"></div>
     <div class="land-inner">
         <header class="land-hdr">
-            <div class="land-mark">
-                <img src="favicon.svg" alt="MotoBite" style="width: 42px;height: 42px;border-radius: 50%;display: block;">
-            </div>
+            <div class="land-mark">MB</div>
             <div><div class="land-brand-name">MotoBite</div><div class="land-brand-sub">Delivery Platform</div></div>
         </header>
 
@@ -98,58 +84,53 @@
             </article>
 
             <article id="cp-history" class="sp">
-                <h2 class="h3">ORDER HISTORY</h2>
-                <div id="hist-list"></div>
+                    <h2 class="h3">ORDER HISTORY</h2>
+                    <div id="hist-list"></div>
+                </div>
             </article>
-
             <article id="cp-location" class="sp">
                 <div class="step-hdr">
                     <div class="step-ico">📍</div>
                     <h2 class="step-tit">WHERE DO WE DELIVER?</h2>
-                   <p class="step-sub">Move the map so the <strong style="color:var(--red)">blue pin</strong> points to your door — then tap <strong>Use This Location</strong></p>
+                    <p class="step-sub">We'll confirm your area and assign your rider</p>
                 </div>
                 <div class="step-bod">
-                    <!-- Search box -->
-                    <div style="position:relative;margin-bottom:10px">
-                        <input class="inp" id="loc-search" placeholder="🔍 Search area, e.g. Narok Town, Maasai Mara..."
-                            oninput="locSearchDebounce()" autocomplete="off"
-                            style="padding-right:40px"/>
-                        <div id="loc-search-results" style="
-                            display:none;position:absolute;top:100%;left:0;right:0;
-                            background:var(--dark2);border:1px solid var(--line2);
-                            border-radius:0 0 var(--r) var(--r);z-index:2000;
-                            max-height:180px;overflow-y:auto"></div>
+
+                    <!-- GPS status bar -->
+                    <div id="loc-gps-bar" style="display:flex;align-items:center;gap:10px;background:var(--dark3);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+                        <span id="loc-gps-ico" style="font-size:1.4rem">📡</span>
+                        <span id="loc-gps-txt" style="font-size:.82rem;color:var(--muted)">Getting your location…</span>
+                        <button id="loc-gps-retry" onclick="tryGPS()" style="display:none;margin-left:auto;font-size:.72rem;color:var(--red);background:none;border:none;cursor:pointer;font-weight:700">RETRY GPS</button>
                     </div>
 
-                    <!-- Map container -->
-                    <div id="loc-map" style="height:280px;border-radius:var(--r);overflow:hidden;border:2px solid var(--line2);margin-bottom:10px"></div>
-
-                    <!-- Status bar — no sibling spinner; setLocStatus controls this entirely -->
-                    <div id="loc-status" style="
-                        background:var(--dark3);border-radius:8px;padding:10px 14px;
-                        font-size:.8rem;color:var(--muted);margin-bottom:10px;
-                        display:flex;align-items:center;gap:8px">
-                        <span id="loc-status-txt">Getting your GPS location…</span>
+                    <!-- GPS confirmed box — shown when GPS succeeds and is within 50 km -->
+                    <div id="loc-gps-confirmed" style="display:none;background:rgba(46,204,113,.1);border:1.5px solid var(--green);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;text-align:center">
+                        <div style="font-size:1.6rem;margin-bottom:4px">✅</div>
+                        <div id="loc-gps-area" style="font-weight:700;font-size:.95rem;color:var(--white)"></div>
+                        <div id="loc-gps-dist" style="font-size:.75rem;color:var(--muted);margin-top:3px"></div>
+                        <button onclick="showAreaPicker()" style="font-size:.72rem;color:var(--orange);background:none;border:none;cursor:pointer;margin-top:8px;text-decoration:underline">Not right? Choose area manually</button>
                     </div>
 
-                    <div id="loc-err-box" class="hidden" style="margin-bottom:8px"></div>
+                    <!-- Area picker — shown when GPS fails or user taps "Not right?" -->
+                    <div id="loc-area-picker" style="display:none">
+                        <div style="font-size:.82rem;color:var(--muted);margin-bottom:10px;font-weight:600">TAP YOUR AREA IN NAROK:</div>
+                        <div id="loc-area-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px"></div>
 
-                    <!-- Action buttons -->
-                    <button class="btn btn-primary btn-full btn-lg" id="loc-btn"
-                        onclick="confirmMapLocation()">
-                        📍 Use This Location
-                    </button>
-                    <button class="btn btn-ghost btn-sm btn-full" id="loc-gps-btn"
-                        onclick="recenterOnGPS()"
-                        style="margin-top:6px;font-size:.78rem">
-                        🎯 Re-centre on my GPS
-                    </button>
-                    <button class="btn btn-ghost btn-full" onclick="cPanel('menu')" style="margin-top:6px">
-                        ← Back to Menu
-                    </button>
+                        <!-- Landmark field -->
+                        <div class="field" style="margin-bottom:4px">
+                            <label class="field-lbl">Nearest Landmark or Building</label>
+                            <input class="inp" id="loc-landmark" placeholder="e.g. Near Shell Petrol, Opp. Barclays" oninput="onLandmarkInput()"/>
+                            <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Helps your rider find you faster 🏍️</div>
+                        </div>
+                    </div>
+
+                    <div id="loc-err-box" class="hidden" style="color:var(--red);font-size:.82rem;margin-bottom:10px;padding:8px 12px;background:rgba(220,38,38,.1);border-radius:8px"></div>
+
+                    <button class="btn btn-primary btn-full btn-lg" id="loc-btn" onclick="confirmLocation()">Confirm Location →</button>
+                    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="cPanel('menu')">← Back to Menu</button>
                 </div>
             </article>
-            <article id="cp-payment" class="sp">
+            <section id="cp-payment" class="sp">
     <div class="step-hdr">
         <div class="step-ico">💳</div>
         <h2 class="step-tit">PAY WITH M-PESA</h2>
@@ -193,11 +174,11 @@
             <input type="number" class="inp" id="mpesa-amount" placeholder="e.g. 650" inputmode="numeric"/>
         </div>
         <button class="btn btn-primary btn-full btn-lg" id="pay-btn" onclick="initPay()">✅ I Have Paid — Place Order</button>
-        <button class="btn btn-ghost btn-full" style="margin-top:9px" onclick="cPanelLocation()">← Change Location</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:9px" onclick="cPanel('location')">← Change Location</button>
     </div>
-</article>
+</section>
 
-         <article id="cp-rating" class="sp">
+         <section id="cp-rating" class="sp">
         <div class="step-hdr"><div class="step-ico">⭐</div><h2 class="step-tit">RATE YOUR ORDER</h2><p class="step-sub">Help us keep the service great</p></div>
         <div class="step-bod">
           <div class="card">
@@ -223,7 +204,7 @@
           <button class="btn btn-primary btn-full btn-lg" onclick="submitRating()">Submit Rating 🙏</button>
           <button class="btn btn-ghost btn-full" onclick="cPanel('menu')">Skip for now</button>
         </div>
-      </article>  
+      </section>  
      </main>
      <button class="cart-float hidden" id="cart-float" onclick="openCart()">
         <div class="cf-l"><div class="cf-cnt" id="cf-cnt">0</div>View Order</div>
@@ -251,7 +232,7 @@
 <section id="s-rider" class="screen">
     <div>
         <main>
-        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark"> <img src="favicon.svg" alt="MotoBite" style="width: 42px;height: 42px;border-radius: 50%;display: block;"></div><span class="tb-title">Rider</span></div><div class="tb-right"><span class="badge b-blue">Rider</span><button class="exit-btn" onclick="exitRole()">Sign Out</button></div></div></header>
+        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">RIDER</span></div><div class="tb-right"><span class="badge b-blue">Rider</span><button class="exit-btn" onclick="exitRole()">Exit</button></div></div></header>
         <div id="rider-content"></div>
         <nav class="bnav">
             <button class="bnav-btn on" data-s="home" onclick="rPanel('home',this)"><span class="ni">🏠</span>Home</button>
@@ -292,16 +273,14 @@
             <button class="a-tab" onclick="aTab('orders',this)">Orders</button>
             <button class="a-tab" onclick="aTab('riders',this)">Riders</button>
             <button class="a-tab" onclick="aTab('menu',this)">Menu</button>
-            <button class="a-tab" onclick="aTab('revenue',this)">📊 Revenue</button>
         </nav> 
         <article id="ap-overview" class="sp on">
             <div class="a-metrics" id="a-metrics"></div>
             <section class="a-sec"><div class="asec-t">RECENT ORDERS <button class="btn btn-ghost btn-sm" onclick="aTab('orders',null)">View All →</button></div><div id="a-recent"></div></section>
         </article>
         <article id="ap-orders" class="sp"><section class="a-sec"><div id="a-orders"></div></section></article>
-        <article id="ap-riders" class="sp"><section class="a-sec"><div class="a-sec-t">RIDERS</div><div id="a-riders"></div></section></article>
+        <article id="ap-riders" class="sp"><section class="a-sec"><div class="a-sec-t">PENDING APPROVAL</div><div id="a-riders"></div></section></article>
         <article id="ap-menu" class="sp"><section class="a-sec"><div class="a-sec-t">MENU ITEMS</div><div id="a-menu"></div></section></article>
-        <article id="ap-revenue" class="sp"><section class="a-sec"><div id="a-revenue"></div></section></article>
         </main>    
     </div>
 </section>
@@ -327,8 +306,7 @@
     </div>
 </section>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+<script src="app.js"></script>
 </body>
 </html>

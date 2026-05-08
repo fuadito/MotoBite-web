@@ -1270,7 +1270,7 @@ function resetLocUI(){
   setEl('loc-err-box',       { text:'', cls:'hidden' });
   const lbl = document.getElementById('loc-landmark');
   if(lbl) lbl.value = '';
-  enableLocBtn(false);
+  enableLocBtn(false); // disabled until GPS confirms or chip/landmark selected
   setGpsStatus('📡', 'Getting your location…', false);
 }
 
