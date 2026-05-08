@@ -1292,14 +1292,56 @@ function setGpsStatus(ico, txt, showRetry=false){
 }
 
 // ── GPS ───────────────────────────────────────────────────────────────────────
+let _gpsWatcher = null;
+let _gpsTimeout = null;
+let _gpsBestAccuracy = Infinity;
+
 function tryGPS(){
   setGpsStatus('📡', 'Getting your location…', false);
-  if(!navigator.geolocation){
-    onGPSFail({ code:2 });
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(onGPSSuccess, onGPSFail,
-    { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+  if(!navigator.geolocation){ onGPSFail({ code:2 }); return; }
+
+  // Clear any previous watcher
+  if(_gpsWatcher != null){ navigator.geolocation.clearWatch(_gpsWatcher); _gpsWatcher=null; }
+  if(_gpsTimeout)  { clearTimeout(_gpsTimeout); _gpsTimeout=null; }
+  _gpsBestAccuracy = Infinity;
+
+  // watchPosition keeps refining — cell-tower (~300m) first, then GPS chip (<20m).
+  // We accept the first reading that is (a) within zone OR (b) accurate enough to trust.
+  // After 15 s we give up and fall back to the area picker.
+  _gpsTimeout = setTimeout(() => {
+    if(_gpsWatcher != null){ navigator.geolocation.clearWatch(_gpsWatcher); _gpsWatcher=null; }
+    if(!_gpsLat){
+      setGpsStatus('📍', 'GPS timed out — choose your area below', true);
+      showAreaPicker();
+    }
+  }, 15000);
+
+  _gpsWatcher = navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude:lat, longitude:lng, accuracy } = pos.coords;
+      if(accuracy >= _gpsBestAccuracy) return; // ignore if not improving
+      _gpsBestAccuracy = accuracy;
+
+      const dist = haversine(lat, lng, KFC_LAT, KFC_LNG);
+
+      if(dist > MAX_KM && accuracy > 200){
+        // Out of zone BUT still low-accuracy — keep watching, GPS may improve
+        setGpsStatus('📡', `Improving GPS… (±${Math.round(accuracy)}m)`, false);
+        return;
+      }
+
+      // Commit: either within zone, or high-accuracy but truly out of zone
+      clearTimeout(_gpsTimeout); _gpsTimeout=null;
+      navigator.geolocation.clearWatch(_gpsWatcher); _gpsWatcher=null;
+      onGPSSuccess(pos);
+    },
+    err => {
+      if(_gpsTimeout){ clearTimeout(_gpsTimeout); _gpsTimeout=null; }
+      if(_gpsWatcher != null){ navigator.geolocation.clearWatch(_gpsWatcher); _gpsWatcher=null; }
+      onGPSFail(err);
+    },
+    { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+  );
 }
 
 function onGPSSuccess(pos){
@@ -2059,9 +2101,25 @@ function showRiderOrderAlert(o){
     if(!z) return;
     let t=180;
 
+    // FIX 1: Store the FULL payload object in activeOrder immediately.
+    // Previously only pendingOrder was set here — but openPreAcceptChat() and
+    // acceptOrder() both read from activeOrder. If activeOrder was only {id:orderId}
+    // (set by openPreAcceptChat's stub), all fields like order_number, customer_area,
+    // delivery_hint, items became undefined in the delivery screen.
+    riderState.activeOrder  = o;
+    riderState.pendingOrder = o;
+
   // Prefer top-level lat/lng (set by dispatch.js) over nested location object
     const lat = o.customer_lat || o.location?.lat;
     const lng = o.customer_lng || o.location?.lng;
+
+    // Build delivery hint — area + landmark combined
+    // FIX 3: Use delivery_hint from backend if present (already has "Area — Landmark").
+    // If not, build it here. Either way use ONE variable — don't show it twice.
+    const delivHint = o.delivery_hint
+      || (o.landmark ? `${o.customer_area||'Narok Town'} — ${o.landmark}` : null)
+      || o.customer_area
+      || 'Narok Town';
 
     // OpenStreetMap location preview — no API key needed
     const mapHtml = (lat && lng) ? `
@@ -2080,15 +2138,12 @@ function showRiderOrderAlert(o){
         🗺️ Open Navigation (Google Maps)
       </a>` : '';
 
-         // Build full delivery hint: "Area — Landmark" for rider to read
-    const delivHint = o.delivery_hint
-      || [o.customer_area, o.landmark].filter(Boolean).join(' — ')
-      || 'Narok Town';
+         // delivHint already built above — don't rebuild here
 
     z.innerHTML=`<div class="o-alert">
     <div class="oa-top"><div class="oa-title">🔔 NEW ORDER!</div><div class="oa-timer" id="ot">${fmtTime(t)}</div></div>
-    <div class="oa-detail">📍 Collect: KFC Narok</div>
-    <div class="oa-detail">📍 Deliver to: <strong>${delivHint}</strong></div>
+    <div class="oa-detail">📍 Collect from: <strong>KFC Narok</strong></div>
+    <div class="oa-detail">🏠 Deliver to: <strong>${delivHint}</strong></div>
     <div class="oa-detail" style="color:var(--green);font-weight:700;font-size:.92rem">💰 Delivery Fee: KES ${o.delivery_fee > 0 ? o.delivery_fee : '—  (agree via chat)'}</div>
     ${mapHtml}
     <div class="oa-items" style="margin-top:8px">${(o.items||[]).map(i=>`• ${i.name}${i.note?` (${i.note})`:''}`).join('<br>')}</div>
@@ -2111,20 +2166,24 @@ function showRiderOrderAlert(o){
 }
 
 function openPreAcceptChat(orderId){
-  // Store the order temporarily so chat works before acceptance
-  if(!riderState.activeOrder) riderState.activeOrder = {id: orderId};
+  // Don't overwrite the full activeOrder object with a stub {id:orderId}
+  // riderState.activeOrder is already the full payload set by showRiderOrderAlert()
   openChat(orderId, 'rider');
 }
+
 function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
 function acceptOrder(){
   if(oTimer) clearInterval(oTimer);
-  // Promote pendingOrder to activeOrder if needed (case: rider returned from another app)
-  if(!riderState.activeOrder && riderState.pendingOrder){
-    riderState.activeOrder = riderState.pendingOrder;
-  }
+  // activeOrder is already the full order object (set in showRiderOrderAlert).
+  // pendingOrder is the same object — just clear it.
   riderState.pendingOrder = null;
   localStorage.removeItem('mb_pending_order');
+
+  // FIX 2: Update status in local object immediately so renderRiderDelivery shows
+  // the "Food Collected" button instead of "Awaiting payment confirmation".
+  // The backend /accept endpoint updates the DB — we mirror that locally right away.
+  if(riderState.activeOrder) riderState.activeOrder.status = 'rider_assigned';
 
   apiFetch(`/api/orders/${riderState.activeOrder.id}/accept`, {method:'POST'});
   localStorage.setItem('mb_active_delivery', JSON.stringify(riderState.activeOrder));
@@ -3215,19 +3274,18 @@ function showChatBanner(orderId, fromName, lastMsg, myRole){
     animation:slideDown .3s ease;box-shadow:0 4px 20px rgba(0,0,0,.5);
   `;
   banner.innerHTML = `
-    <div style="font-size:1.4rem">💬</div>
-    <div style="flex:1;min-width:0">
-      <div style="font-size:.8rem;font-weight:700;color:var(--red);letter-spacing:.5px">MESSAGE FROM ${fromName.toUpperCase()}</div>
-      <div style="font-size:.82rem;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastMsg}</div>
+    <div onclick="openChat(${orderId},'${myRole}');clearChatBanner()"
+      style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;padding:4px 0">
+      <div style="font-size:1.4rem;flex-shrink:0">💬</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.8rem;font-weight:700;color:var(--red);letter-spacing:.5px">MESSAGE FROM ${fromName.toUpperCase()}</div>
+        <div style="font-size:.82rem;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(255,255,255,.3)">${lastMsg}</div>
+      </div>
     </div>
-    <button id="chat-banner-resend" style="background:var(--dark3);color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:5px 9px;font-size:.72rem;cursor:pointer;white-space:nowrap" disabled>
+    <button id="chat-banner-resend" style="background:var(--dark3);color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:5px 9px;font-size:.72rem;cursor:pointer;white-space:nowrap;flex-shrink:0" disabled>
       Resend (${resendCountdown}s)
     </button>
-    <button onclick="openChat(${orderId},'${myRole}');clearChatBanner()" 
-      style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
-      Open Chat
-    </button>
-    <button onclick="clearChatBanner()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:0 4px">✕</button>
+    <button onclick="clearChatBanner()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:0 4px;flex-shrink:0">✕</button>
   `;
   document.body.appendChild(banner);
 
@@ -3632,13 +3690,24 @@ function confirmAgreedFee(){
 function openChat(orderId, myRole){
   ensureChatSheet();
   chatOrderId=orderId; chatMyRole=myRole;
-  // Restore from localStorage if not in memory
-  if(!chatMsgs[orderId]){
-    try{
-      const saved = localStorage.getItem('mb_chat_'+orderId);
-      chatMsgs[orderId] = saved ? JSON.parse(saved) : [];
-    }catch{ chatMsgs[orderId] = []; }
-  }
+
+  // FIX 6: Always load from localStorage first — this is the history that
+  // accumulated while the chat sheet was closed. In-memory chatMsgs may be
+  // empty if the page was reloaded, so we always prefer the persisted version.
+  try {
+    const saved = localStorage.getItem('mb_chat_'+orderId);
+    const persisted = saved ? JSON.parse(saved) : [];
+    // Merge: keep any in-memory msgs not yet in localStorage (just sent)
+    const inMem = chatMsgs[orderId] || [];
+    const merged = [...persisted];
+    inMem.forEach(m => {
+      if(!merged.some(p => p.ts === m.ts && p.role === m.role)) merged.push(m);
+    });
+    merged.sort((a,b) => a.ts - b.ts);
+    chatMsgs[orderId] = merged;
+    if(merged.length) localStorage.setItem('mb_chat_'+orderId, JSON.stringify(merged));
+  } catch { chatMsgs[orderId] = chatMsgs[orderId] || []; }
+
   renderChatMessages();
 
   // Quick-suggestion buttons (rider only)
