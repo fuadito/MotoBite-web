@@ -1204,7 +1204,7 @@ function renderCartSheet(){
 </div>
     <div class="srow tot"><span>Pay to KFC Till</span><span>${F.money(total)}</span></div>
   </div>`;
-  ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();cPanelLocation()">Confirm Order →</button>
+  ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();showOrderTypeChoice()">Confirm Order →</button>
   <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
 }
 
@@ -1214,8 +1214,114 @@ function removeCartItem(i){
    if(!cart.length)closeCart(); }
 
 
- 
-// ══════════════════════════════════════════════════════════════════════════════
+// ── ORDER TYPE CHOICE — Deliver or Collect ─────────────────────────────────────
+// Shown after customer confirms cart. Two big cards: deliver or self-pickup.
+// Self-pickup skips location and rider entirely.
+
+let _orderType = 'delivery'; // 'delivery' | 'pickup'
+
+function showOrderTypeChoice(){
+  // Remove any existing sheet
+  document.getElementById('order-type-sheet')?.remove();
+  document.getElementById('order-type-ov')?.remove();
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="overlay" id="order-type-ov" onclick="closeOrderTypeChoice()"></div>
+    <aside class="sheet" id="order-type-sheet">
+      <div class="sh-in">
+        <div class="sh-handle"></div>
+        <h2 class="sh-title" style="margin-bottom:6px">HOW WOULD YOU LIKE YOUR ORDER?</h2>
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:20px;text-align:center">
+          Stopping by KFC Narok? Skip the wait — collect it yourself.
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+
+          <button onclick="selectOrderType('delivery')" id="ot-delivery"
+            style="background:var(--red);border:2.5px solid var(--red);border-radius:14px;
+                   padding:22px 12px;cursor:pointer;color:#fff;transition:.15s;width:100%;text-align:center">
+            <div style="font-size:2.2rem;margin-bottom:8px">🛵</div>
+            <div style="font-family:var(--fh);font-size:.95rem;letter-spacing:1px;margin-bottom:4px">DELIVER TO ME</div>
+            <div style="font-size:.74rem;opacity:.85">Rider brings it to your door</div>
+          </button>
+
+          <button onclick="selectOrderType('pickup')" id="ot-pickup"
+            style="background:var(--dark3);border:2.5px solid var(--line2);border-radius:14px;
+                   padding:22px 12px;cursor:pointer;color:var(--white);transition:.15s;width:100%;text-align:center">
+            <div style="font-size:2.2rem;margin-bottom:8px">🏃</div>
+            <div style="font-family:var(--fh);font-size:.95rem;letter-spacing:1px;margin-bottom:4px">COLLECT AT KFC</div>
+            <div style="font-size:.74rem;opacity:.75">You pick it up at the counter</div>
+          </button>
+
+        </div>
+
+        <div id="ot-pickup-note" style="display:none;background:var(--dark3);border-radius:10px;
+          padding:14px;margin-bottom:16px;font-size:.82rem;color:var(--muted);text-align:center">
+          📍 <strong style="color:var(--white)">KFC Narok</strong> — collect from the counter.<br>
+          Show your <strong style="color:var(--red)">order number</strong> to the staff when you arrive.
+        </div>
+
+        <button class="btn btn-primary btn-full btn-lg" id="ot-confirm-btn"
+          onclick="confirmOrderType()" style="margin-bottom:8px">
+          Continue →
+        </button>
+        <button class="btn btn-ghost btn-full" onclick="closeOrderTypeChoice()" style="font-size:.82rem">
+          Back to Cart
+        </button>
+      </div>
+    </aside>`);
+
+  // Default to delivery selected
+  _orderType = 'delivery';
+  document.getElementById('order-type-ov').classList.add('on');
+  document.getElementById('order-type-sheet').classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+
+function selectOrderType(type){
+  _orderType = type;
+  const delivBtn  = document.getElementById('ot-delivery');
+  const pickupBtn = document.getElementById('ot-pickup');
+  const note      = document.getElementById('ot-pickup-note');
+  if(type === 'pickup'){
+    pickupBtn.style.background   = 'var(--red)';
+    pickupBtn.style.borderColor  = 'var(--red)';
+    pickupBtn.style.color        = '#fff';
+    delivBtn.style.background    = 'var(--dark3)';
+    delivBtn.style.borderColor   = 'var(--line2)';
+    delivBtn.style.color         = 'var(--white)';
+    if(note) note.style.display  = 'block';
+  } else {
+    delivBtn.style.background    = 'var(--red)';
+    delivBtn.style.borderColor   = 'var(--red)';
+    delivBtn.style.color         = '#fff';
+    pickupBtn.style.background   = 'var(--dark3)';
+    pickupBtn.style.borderColor  = 'var(--line2)';
+    pickupBtn.style.color        = 'var(--white)';
+    if(note) note.style.display  = 'none';
+  }
+}
+
+function confirmOrderType(){
+  closeOrderTypeChoice();
+  if(_orderType === 'pickup'){
+    // Self-pickup: skip location, go straight to payment
+    userLoc = { lat: KFC_LAT, lng: KFC_LNG, areaName: 'KFC Narok (Self-Pickup)', landmark: 'Counter collection' };
+    goToPayment();
+  } else {
+    // Delivery: enter location as normal
+    cPanelLocation();
+  }
+}
+
+function closeOrderTypeChoice(){
+  document.getElementById('order-type-ov')?.classList.remove('on');
+  document.getElementById('order-type-sheet')?.classList.remove('on');
+  document.body.style.overflow = '';
+}
+
+
+
 // LOCATION SYSTEM  —  3-path UX  (GPS → area chips → type landmark)
 // Matches the HTML in cp-location: no map, no dragging, no technical concepts.
 //
@@ -1498,7 +1604,7 @@ const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCas
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
 const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
-if(!userLoc){
+if(_orderType !== 'pickup' && !userLoc){
   toast('📍 Please confirm your delivery location first','err',4000);
   cPanelLocation(); return;
 }
@@ -1529,6 +1635,7 @@ if(!amountPaid || amountPaid < orderTotal){
     customer_lat:   userLoc?.lat,
     customer_lng:   userLoc?.lng,
     customer_area:  userLoc?.areaName,
+    order_type:     _orderType || 'delivery',
     mpesa_reference:`${mpesaName} · KES ${amountPaid}`
   }});
 
@@ -1655,6 +1762,85 @@ async function renderTracking(oid) {
       </div>`;
     return;
   }
+
+  // ── SELF-PICKUP TRACKING UI ────────────────────────────────────────────────
+  if(o.order_type === 'pickup'){
+    const isReady     = ['ready','rider_assigned','picked_up','delivered'].includes(o.status);
+    const isDelivered = o.status === 'delivered'; // reused as "collected" for pickup
+    const isCooking   = o.status === 'cooking';
+    const isPaid      = ['paid'].includes(o.status);
+    const isPending   = o.status === 'pending';
+
+    const pickupSteps = [
+      { lbl:'Order Placed', done: true },
+      { lbl:'Payment Confirmed', done: !isPending },
+      { lbl:'Being Prepared', done: isReady || isDelivered },
+      { lbl:'Ready to Collect', done: isReady || isDelivered },
+      { lbl:'Collected ✓', done: isDelivered },
+    ];
+    const activeStep = pickupSteps.reduce((last, s, i) => s.done ? i : last, 0);
+
+    document.getElementById('track-body').innerHTML = `
+      <div class="trk-hdr">
+        <div class="trk-no">Order ${o.order_number}</div>
+        <div class="trk-st" style="color:var(--green)">🏃 Self-Pickup</div>
+        <div class="trk-eta">${isDelivered ? 'Collected — enjoy!' : isReady ? 'Ready! Head to the counter' : 'Being prepared — come when ready'}</div>
+      </div>
+
+      <!-- Simplified pickup progress -->
+      <div class="prog">
+        ${pickupSteps.map((s,i) => `
+          <div class="ps ${i < activeStep ? 'done' : ''} ${i === activeStep ? 'act' : ''}">
+            <div class="pd">${i < activeStep ? '✓' : s.lbl[0]}</div>
+            <div class="pl">${s.lbl}</div>
+          </div>
+          ${i < pickupSteps.length-1 ? `<div style="flex:1;height:2px;background:${i < activeStep ? 'var(--green)' : 'var(--line2)'};margin-bottom:20px"></div>` : ''}`).join('')}
+      </div>
+
+      <div style="padding:0 16px 16px;max-width:500px;margin:0 auto">
+
+        <!-- Big order number card — show at counter -->
+        <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:14px;${isReady ? 'border:2px solid var(--green)' : ''}">
+          <div style="font-size:.75rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">SHOW THIS AT THE COUNTER</div>
+          <div style="font-family:var(--fh);font-size:2.8rem;letter-spacing:6px;color:var(--red)">${o.order_number}</div>
+          ${isReady ? `<div style="margin-top:10px;background:var(--green);color:#fff;border-radius:8px;padding:10px;font-weight:700;font-size:.9rem">✅ YOUR ORDER IS READY!</div>` : `<div style="margin-top:8px;font-size:.8rem;color:var(--muted)">Quote this number to KFC staff at the counter</div>`}
+        </div>
+
+        <!-- Location -->
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-t">📍 WHERE TO COLLECT</div>
+          <div style="font-size:.88rem;margin-bottom:8px"><strong>KFC Narok</strong> — Narok Town Centre</div>
+          <a href="https://www.google.com/maps/search/KFC+Narok" target="_blank"
+            style="display:inline-block;background:var(--dark3);color:var(--white);padding:8px 14px;border-radius:8px;font-size:.82rem;text-decoration:none;border:1px solid var(--line2)">
+            🗺️ Open in Maps
+          </a>
+        </div>
+
+        <!-- Order summary -->
+        <div class="card">
+          <div class="card-t">ORDER SUMMARY</div>
+          ${(o.items||[]).map(i => `
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem">
+              <span>${i.name}${i.chickenType ? ` <span style="background:var(--red);color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px">${i.chickenType}</span>` : ''}${i.note ? ` <span style="color:var(--orange);font-size:.73rem">(${i.note})</span>` : ''}</span>
+              <span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">${F.money(i.price)}</span>
+            </div>
+          `).join('')}
+          <div style="display:flex;justify-content:space-between;padding:10px 0 2px;font-weight:700">
+            <span>Total</span><span style="color:var(--red)">${F.money(o.food_amount)}</span>
+          </div>
+        </div>
+
+        ${isDelivered ? `
+          <div class="card" style="margin-top:11px" id="rating-card">
+            <div class="card-t">RATE YOUR FOOD</div>
+            <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">How was the food?</p>
+            <div class="stars" id="food-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('food',${n})">⭐</span>`).join('')}</div>
+            <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="submitRating(${o.id}, true)">Submit Rating</button>
+          </div>` : ''}
+      </div>`;
+    return;
+  }
+  // ── END PICKUP UI ──────────────────────────────────────────────────────────
   
   const steps = [
     {lbl:'Order Placed', match:['pending','paid','cooking','ready','rider_assigned','picked_up','delivered']},
@@ -2512,7 +2698,7 @@ const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   }</div>`
 }[type];
   return  `<div class="kc" id="kc-${o.id}">
-     <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
+     <div class="kc-top"><div class="kc-num">${o.order_number}${o.order_type==='pickup'?` <span style="background:var(--green);color:#fff;font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px;vertical-align:middle">🏃 PICKUP</span>`:''}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
     <div class="kc-area">📍 ${o.customer_area||'Narok'}</div>
     ${o.mpesa_reference
@@ -3008,10 +3194,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const urlRole = new URLSearchParams(window.location.search).get('role');
   if(urlRole === 'kitchen') { selectRole('kitchen');    return; }
   if(urlRole === 'admin')   { screen('s-admin-login');  return; }
-  if(urlRole === 'rider')   { selectRole('rider');      return; }
-  if(urlRole === 'customer'){ selectRole('customer');   return; }
+  // NOTE: ?role=rider and ?role=customer do NOT force login if a session already exists.
+  // They only set the intended role for fresh visits. Session restore below handles refresh.
 
-  // No ?role= in URL — restore previous session as normal
+  // Restore previous session — works regardless of ?role= param
   if(localStorage.getItem('mb_kitchen')){
     role = 'kitchen'; launchKitchen(); return;
   }
@@ -3107,7 +3293,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     role = 'admin'; launchAdmin(); return;
   }
 
+  // No session found anywhere — send to appropriate login based on URL param
+  if(urlRole === 'rider')   { selectRole('rider');   return; }
+  if(urlRole === 'customer'){ selectRole('customer'); return; }
+
+  screen('s-landing');
 }); // ← closes DOMContentLoaded
+
 // onAuthStateChange — ONLY affects admin sessions.
 // Riders and customers are NOT Supabase auth users. Firing screen('s-landing')
 // on every SIGNED_OUT event would log out riders/customers whenever the anon
