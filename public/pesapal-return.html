@@ -1,0 +1,14 @@
+<!-- public/pesapal-return.html or served at /pesapal-return -->
+<!DOCTYPE html>
+<html>
+<head><title>Payment Complete</title></head>
+<body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:60px 20px">
+  <div style="font-size:3rem;margin-bottom:16px">✅</div>
+  <h2>Payment received!</h2>
+  <p style="color:#888">You can close this and return to your order.</p>
+  <script>
+    // Tell the parent window payment is done (backup to polling)
+    try { window.parent.postMessage({ pesapalDone: true }, '*'); } catch(e) {}
+  </script>
+</body>
+</html>

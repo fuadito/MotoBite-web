@@ -1204,7 +1204,7 @@ function renderCartSheet(){
 </div>
     <div class="srow tot"><span>Pay to KFC Till</span><span>${F.money(total)}</span></div>
   </div>`;
-  ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();showOrderTypeChoice()">Confirm Order →</button>
+  ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();cPanelLocation()">Confirm Order →</button>
   <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
 }
 
@@ -1214,114 +1214,8 @@ function removeCartItem(i){
    if(!cart.length)closeCart(); }
 
 
-// ── ORDER TYPE CHOICE — Deliver or Collect ─────────────────────────────────────
-// Shown after customer confirms cart. Two big cards: deliver or self-pickup.
-// Self-pickup skips location and rider entirely.
-
-let _orderType = 'delivery'; // 'delivery' | 'pickup'
-
-function showOrderTypeChoice(){
-  // Remove any existing sheet
-  document.getElementById('order-type-sheet')?.remove();
-  document.getElementById('order-type-ov')?.remove();
-
-  document.body.insertAdjacentHTML('beforeend', `
-    <div class="overlay" id="order-type-ov" onclick="closeOrderTypeChoice()"></div>
-    <aside class="sheet" id="order-type-sheet">
-      <div class="sh-in">
-        <div class="sh-handle"></div>
-        <h2 class="sh-title" style="margin-bottom:6px">HOW WOULD YOU LIKE YOUR ORDER?</h2>
-        <p style="font-size:.82rem;color:var(--muted);margin-bottom:20px;text-align:center">
-          Stopping by KFC Narok? Skip the wait — collect it yourself.
-        </p>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-
-          <button onclick="selectOrderType('delivery')" id="ot-delivery"
-            style="background:var(--red);border:2.5px solid var(--red);border-radius:14px;
-                   padding:22px 12px;cursor:pointer;color:#fff;transition:.15s;width:100%;text-align:center">
-            <div style="font-size:2.2rem;margin-bottom:8px">🛵</div>
-            <div style="font-family:var(--fh);font-size:.95rem;letter-spacing:1px;margin-bottom:4px">DELIVER TO ME</div>
-            <div style="font-size:.74rem;opacity:.85">Rider brings it to your door</div>
-          </button>
-
-          <button onclick="selectOrderType('pickup')" id="ot-pickup"
-            style="background:var(--dark3);border:2.5px solid var(--line2);border-radius:14px;
-                   padding:22px 12px;cursor:pointer;color:var(--white);transition:.15s;width:100%;text-align:center">
-            <div style="font-size:2.2rem;margin-bottom:8px">🏃</div>
-            <div style="font-family:var(--fh);font-size:.95rem;letter-spacing:1px;margin-bottom:4px">COLLECT AT KFC</div>
-            <div style="font-size:.74rem;opacity:.75">You pick it up at the counter</div>
-          </button>
-
-        </div>
-
-        <div id="ot-pickup-note" style="display:none;background:var(--dark3);border-radius:10px;
-          padding:14px;margin-bottom:16px;font-size:.82rem;color:var(--muted);text-align:center">
-          📍 <strong style="color:var(--white)">KFC Narok</strong> — collect from the counter.<br>
-          Show your <strong style="color:var(--red)">order number</strong> to the staff when you arrive.
-        </div>
-
-        <button class="btn btn-primary btn-full btn-lg" id="ot-confirm-btn"
-          onclick="confirmOrderType()" style="margin-bottom:8px">
-          Continue →
-        </button>
-        <button class="btn btn-ghost btn-full" onclick="closeOrderTypeChoice()" style="font-size:.82rem">
-          Back to Cart
-        </button>
-      </div>
-    </aside>`);
-
-  // Default to delivery selected
-  _orderType = 'delivery';
-  document.getElementById('order-type-ov').classList.add('on');
-  document.getElementById('order-type-sheet').classList.add('on');
-  document.body.style.overflow = 'hidden';
-}
-
-function selectOrderType(type){
-  _orderType = type;
-  const delivBtn  = document.getElementById('ot-delivery');
-  const pickupBtn = document.getElementById('ot-pickup');
-  const note      = document.getElementById('ot-pickup-note');
-  if(type === 'pickup'){
-    pickupBtn.style.background   = 'var(--red)';
-    pickupBtn.style.borderColor  = 'var(--red)';
-    pickupBtn.style.color        = '#fff';
-    delivBtn.style.background    = 'var(--dark3)';
-    delivBtn.style.borderColor   = 'var(--line2)';
-    delivBtn.style.color         = 'var(--white)';
-    if(note) note.style.display  = 'block';
-  } else {
-    delivBtn.style.background    = 'var(--red)';
-    delivBtn.style.borderColor   = 'var(--red)';
-    delivBtn.style.color         = '#fff';
-    pickupBtn.style.background   = 'var(--dark3)';
-    pickupBtn.style.borderColor  = 'var(--line2)';
-    pickupBtn.style.color        = 'var(--white)';
-    if(note) note.style.display  = 'none';
-  }
-}
-
-function confirmOrderType(){
-  closeOrderTypeChoice();
-  if(_orderType === 'pickup'){
-    // Self-pickup: skip location, go straight to payment
-    userLoc = { lat: KFC_LAT, lng: KFC_LNG, areaName: 'KFC Narok (Self-Pickup)', landmark: 'Counter collection' };
-    goToPayment();
-  } else {
-    // Delivery: enter location as normal
-    cPanelLocation();
-  }
-}
-
-function closeOrderTypeChoice(){
-  document.getElementById('order-type-ov')?.classList.remove('on');
-  document.getElementById('order-type-sheet')?.classList.remove('on');
-  document.body.style.overflow = '';
-}
-
-
-
+ 
+// ══════════════════════════════════════════════════════════════════════════════
 // LOCATION SYSTEM  —  3-path UX  (GPS → area chips → type landmark)
 // Matches the HTML in cp-location: no map, no dragging, no technical concepts.
 //
@@ -1593,10 +1487,125 @@ function initLocMap(){  cPanelLocation(); }
 function recenterOnGPS(){ tryGPS(); }
 function goToPayment(){
   const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
-  document.getElementById('pay-amt').textContent=F.money(total);
-  const amt2 = document.getElementById('pay-amt2');
-  if (amt2) amt2.textContent = F.money(total)
+
+  // Render the entire payment panel dynamically with M-Pesa + Card tabs
+  const panel = document.getElementById('cp-payment');
+  if(panel){
+    panel.innerHTML = `
+      <div class="sp-hdr">
+        <button class="back-btn" onclick="cPanel('menu')">←</button>
+        <h2 class="sp-title">PAYMENT</h2>
+      </div>
+      <div style="padding:0 16px 100px;max-width:480px;margin:0 auto">
+
+        <!-- Order total -->
+        <div style="text-align:center;margin:18px 0 22px">
+          <div style="font-size:.72rem;color:var(--muted);letter-spacing:2px">ORDER TOTAL</div>
+          <div style="font-family:var(--fh);font-size:2.4rem;letter-spacing:2px;color:var(--red)" id="pay-amt">${F.money(total)}</div>
+        </div>
+
+        <!-- Payment method tabs -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px">
+          <button id="tab-mpesa" onclick="switchPayTab('mpesa')"
+            style="padding:12px 8px;border-radius:10px;border:2.5px solid var(--red);
+                   background:var(--red);color:#fff;font-family:var(--fh);font-size:.8rem;
+                   letter-spacing:1px;cursor:pointer;transition:.15s">
+            <div style="font-size:1.3rem;margin-bottom:4px">💚</div>M-PESA
+          </button>
+          <button id="tab-card" onclick="switchPayTab('card')"
+            style="padding:12px 8px;border-radius:10px;border:2.5px solid var(--line2);
+                   background:var(--dark3);color:var(--white);font-family:var(--fh);font-size:.8rem;
+                   letter-spacing:1px;cursor:pointer;transition:.15s">
+            <div style="font-size:1.3rem;margin-bottom:4px">💳</div>CARD / OTHER
+          </button>
+        </div>
+
+        <!-- ── M-PESA PANEL ── -->
+        <div id="pay-panel-mpesa">
+          <div id="stk-status" style="display:none;background:var(--dark3);border:1px solid var(--green);
+            border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
+            <div style="font-size:1.4rem;margin-bottom:6px">📱</div>
+            <div style="font-family:var(--fh);font-size:.85rem;color:var(--green);letter-spacing:1px">CHECK YOUR PHONE</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:4px">Enter your M-Pesa PIN to complete payment</div>
+          </div>
+          <div id="manual-pay">
+            <div style="background:var(--dark3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.83rem">
+              <div style="font-family:var(--fh);font-size:.75rem;color:var(--muted);letter-spacing:1.5px;margin-bottom:10px">HOW TO PAY</div>
+              <div style="display:flex;flex-direction:column;gap:8px;color:var(--white)">
+                <div>1. Go to <strong>M-Pesa → Lipa na M-Pesa → Buy Goods</strong></div>
+                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">XXXXXXX</strong></div>
+                <div>3. Amount: <strong style="color:var(--red)" id="pay-amt2">${F.money(total)}</strong></div>
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:12px">
+              <label class="field-lbl">M-Pesa Registered Name</label>
+              <input class="inp" id="mpesa-name" placeholder="e.g. JOHN DOE" style="text-transform:uppercase"/>
+            </div>
+            <div class="field" style="margin-bottom:18px">
+              <label class="field-lbl">Amount Paid (KES)</label>
+              <input class="inp" id="mpesa-amount" type="number" inputmode="numeric"
+                placeholder="${total}" value="${total}"/>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-full btn-lg" id="pay-btn" onclick="initPay()">
+            ✅ I Have Paid — Place Order
+          </button>
+        </div>
+
+        <!-- ── PESAPAL CARD PANEL ── -->
+        <div id="pay-panel-card" style="display:none">
+          <div style="background:var(--dark3);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center;font-size:.83rem;color:var(--muted)">
+            Pay securely with <strong style="color:var(--white)">Visa · Mastercard · Amex</strong><br>
+            or bank transfer — powered by Pesapal.
+            <div style="margin-top:12px;display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg"
+                style="height:16px;opacity:.85" alt="Visa"/>
+              <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg"
+                style="height:24px;opacity:.85" alt="Mastercard"/>
+              <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg"
+                style="height:20px;opacity:.85" alt="Amex"/>
+            </div>
+          </div>
+
+          <div style="background:var(--dark3);border-radius:10px;padding:12px 14px;margin-bottom:16px;
+            display:flex;justify-content:space-between;align-items:center;font-size:.84rem">
+            <span style="color:var(--muted)">You will be charged</span>
+            <span style="font-family:var(--fh);font-size:1.15rem;color:var(--red);letter-spacing:1px">${F.money(total)}</span>
+          </div>
+
+          <div style="background:var(--dark3);border-radius:10px;padding:11px 14px;margin-bottom:20px;
+            font-size:.78rem;color:var(--muted);display:flex;gap:8px;align-items:flex-start">
+            <span style="color:var(--green);font-size:1rem;flex-shrink:0">🔒</span>
+            <span>Your order is placed first. A secure Pesapal payment page opens — your card details never touch our servers.</span>
+          </div>
+
+          <button class="btn btn-primary btn-full btn-lg" id="card-pay-btn" onclick="initPesapalPayment()">
+            💳 Pay ${F.money(total)} with Card
+          </button>
+          <div style="text-align:center;margin-top:10px;font-size:.72rem;color:var(--muted)">
+            Secured by <strong style="color:var(--white)">Pesapal</strong> · PCI-DSS compliant · SSL encrypted
+          </div>
+        </div>
+
+      </div>`;
+  }
   cPanel('payment');
+}
+
+// Switch M-Pesa ↔ Card tabs
+function switchPayTab(tab){
+  const isMpesa = tab === 'mpesa';
+  const active  = { background:'var(--red)', borderColor:'var(--red)', color:'#fff' };
+  const idle    = { background:'var(--dark3)', borderColor:'var(--line2)', color:'var(--white)' };
+  const apply   = (el, styles) => el && Object.assign(el.style, styles);
+
+  apply(document.getElementById('tab-mpesa'), isMpesa ? active : idle);
+  apply(document.getElementById('tab-card'),  isMpesa ? idle : active);
+
+  const mpesaPane = document.getElementById('pay-panel-mpesa');
+  const cardPane  = document.getElementById('pay-panel-card');
+  if(mpesaPane) mpesaPane.style.display = isMpesa ? 'block' : 'none';
+  if(cardPane)  cardPane.style.display  = isMpesa ? 'none'  : 'block';
 }
 
 async function initPay() {
@@ -1604,7 +1613,7 @@ const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCas
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
 const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
-if(_orderType !== 'pickup' && !userLoc){
+if(!userLoc){
   toast('📍 Please confirm your delivery location first','err',4000);
   cPanelLocation(); return;
 }
@@ -1635,7 +1644,6 @@ if(!amountPaid || amountPaid < orderTotal){
     customer_lat:   userLoc?.lat,
     customer_lng:   userLoc?.lng,
     customer_area:  userLoc?.areaName,
-    order_type:     _orderType || 'delivery',
     mpesa_reference:`${mpesaName} · KES ${amountPaid}`
   }});
 
@@ -1714,6 +1722,169 @@ async function confirmPayment(orderId) {
   }
 }
 
+// ── PESAPAL CARD PAYMENT ──────────────────────────────────────────────────────
+// Flow:
+//  1. Create order in our DB (status: pending)
+//  2. Call backend → Pesapal API → get hosted payment URL
+//  3. Open full-screen iframe overlay with Pesapal's payment page
+//  4. Poll our backend every 3 s for status change
+//  5. When status ≠ 'pending' → payment done → close iframe → tracking screen
+//  6. Pesapal also sends an IPN webhook to backend (belt-and-suspenders)
+
+let _pesapalPollTimer = null;
+
+async function initPesapalPayment() {
+  if(_orderType !== 'pickup' && !userLoc){
+    toast('📍 Please confirm your delivery location first','err',4000);
+    cPanelLocation(); return;
+  }
+
+  const btn = document.getElementById('card-pay-btn');
+  if(btn){ btn.innerHTML='<span class="spin"></span> Setting up payment...'; btn.disabled=true; }
+
+  // ── Step 1: Create order ──────────────────────────────────────────────────
+  const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
+  const notes = cart.filter(i=>i.note||i.chickenType||Object.keys(i.addOns||{}).length).map(i=>{
+    const addOnStr = Object.values(i.addOns||{}).map(a=>a.label).join(', ');
+    return `${i.name}${i.chickenType?' ['+i.chickenType+']':''}${addOnStr?' + '+addOnStr:''}: ${i.note||''}`;
+  }).join('; ');
+  const orderItems = cart.map(item=>({
+    ...item, price: item.price + Object.values(item.addOns||{}).reduce((s,a)=>s+a.price,0)
+  }));
+
+  const order = await apiFetch('/api/orders', { method:'POST', body:{
+    customer_phone: user.phone,
+    customer_name:  user.name,
+    items:          orderItems,
+    notes,
+    location:       userLoc,
+    customer_lat:   userLoc?.lat,
+    customer_lng:   userLoc?.lng,
+    customer_area:  userLoc?.areaName,
+    order_type:     _orderType || 'delivery',
+    payment_method: 'card',
+    mpesa_reference: 'CARD — awaiting Pesapal confirmation'
+  }});
+
+  if(!order?.id){
+    if(btn){ btn.innerHTML=`💳 Pay ${F.money(total)} with Card`; btn.disabled=false; }
+    toast('Could not create order — check your connection','err',5000); return;
+  }
+
+  // Clear cart immediately — order is in the system
+  cart = []; updateCartUI();
+  document.getElementById('cart-float')?.classList.add('hidden');
+
+  // ── Step 2: Get Pesapal payment URL from backend ──────────────────────────
+  const session = await apiFetch(`/api/orders/${order.id}/pesapal-checkout`, { method:'POST' });
+
+  if(!session?.redirectUrl){
+    if(btn){ btn.innerHTML=`💳 Pay ${F.money(total)} with Card`; btn.disabled=false; }
+    toast(session?.error || 'Payment session failed — use M-Pesa instead','err',6000); return;
+  }
+
+  // ── Step 3: Open iframe overlay ───────────────────────────────────────────
+  openPesapalIframe(session.redirectUrl, order.id, order.order_number, total);
+}
+
+function openPesapalIframe(payUrl, orderId, orderNumber, total){
+  // Remove any stale overlay
+  document.getElementById('pesapal-overlay')?.remove();
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="pesapal-overlay" style="
+      position:fixed;inset:0;z-index:9999;background:#000;
+      display:flex;flex-direction:column;overflow:hidden">
+
+      <!-- Top bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        padding:12px 16px;background:#111;flex-shrink:0;border-bottom:1px solid #222">
+        <div>
+          <div style="font-size:.7rem;color:#888;letter-spacing:1.5px">SECURE PAYMENT</div>
+          <div style="font-family:var(--fh);font-size:.95rem;color:#fff;letter-spacing:1px;margin-top:2px">
+            Order ${orderNumber} · ${F.money(total)}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:.7rem;color:var(--green)">🔒 Pesapal</span>
+          <button onclick="cancelPesapalPayment()"
+            style="background:#222;border:1px solid #333;color:#fff;padding:7px 14px;
+                   border-radius:8px;font-size:.82rem;cursor:pointer">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading indicator (hidden once iframe loads) -->
+      <div id="pesapal-loading" style="position:absolute;top:50%;left:50%;
+        transform:translate(-50%,-50%);text-align:center;color:#666">
+        <div class="spin" style="width:32px;height:32px;border-width:3px;margin:0 auto 12px"></div>
+        <div style="font-size:.82rem">Loading secure payment...</div>
+      </div>
+
+      <!-- Pesapal hosted page -->
+      <iframe id="pesapal-frame" src="${payUrl}"
+        onload="document.getElementById('pesapal-loading').style.display='none'"
+        style="flex:1;border:none;width:100%;background:#fff"
+        allow="payment *">
+      </iframe>
+
+    </div>`);
+
+  document.body.style.overflow = 'hidden';
+
+  // ── Step 4: Poll for payment completion ───────────────────────────────────
+  // IPN webhook will update the DB; polling picks it up within 3 s
+  if(_pesapalPollTimer) clearInterval(_pesapalPollTimer);
+  let pollCount = 0;
+  const MAX_POLLS = 200; // 200 × 3 s = 10 minutes max
+
+  _pesapalPollTimer = setInterval(async () => {
+    pollCount++;
+    if(pollCount > MAX_POLLS){
+      clearInterval(_pesapalPollTimer); _pesapalPollTimer = null;
+      toast('Payment session timed out — check order history or contact KFC Narok','err',8000);
+      closePesapalOverlay();
+      return;
+    }
+
+    const o = await apiFetch(`/api/orders/${orderId}`);
+    if(!o) return; // network blip — retry next poll
+
+    // Any status other than 'pending' means payment was processed
+    if(o.status !== 'pending'){
+      clearInterval(_pesapalPollTimer); _pesapalPollTimer = null;
+      closePesapalOverlay();
+
+      active0Id = orderId;
+      localStorage.setItem('mb_active_order', orderId);
+
+      const msg = o.status === 'ready'
+        ? `✅ Payment confirmed! Order ${o.order_number} is ready to collect 🏃`
+        : `✅ Payment confirmed! Order ${o.order_number} is being prepared 🍗`;
+      toast(msg, 'ok', 6000);
+      showTracking(orderId);
+    }
+  }, 3000);
+}
+
+function closePesapalOverlay(){
+  if(_pesapalPollTimer){ clearInterval(_pesapalPollTimer); _pesapalPollTimer = null; }
+  const overlay = document.getElementById('pesapal-overlay');
+  if(overlay){ overlay.style.opacity='0'; overlay.style.transition='opacity .25s'; setTimeout(()=>overlay.remove(),260); }
+  document.body.style.overflow = '';
+}
+
+function cancelPesapalPayment(){
+  closePesapalOverlay();
+  // Order exists in DB as 'pending' — customer can retry or pay via M-Pesa
+  // Admin can see it and ignore if not paid after 30 min
+  toast('Payment cancelled — your order is saved. Try again or use M-Pesa.','', 6000);
+  const btn = document.getElementById('card-pay-btn');
+  if(btn){ btn.innerHTML=`💳 Pay with Card`; btn.disabled=false; }
+}
+// ── END PESAPAL ───────────────────────────────────────────────────────────────
+
 function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
@@ -1762,85 +1933,6 @@ async function renderTracking(oid) {
       </div>`;
     return;
   }
-
-  // ── SELF-PICKUP TRACKING UI ────────────────────────────────────────────────
-  if(o.order_type === 'pickup'){
-    const isReady     = ['ready','rider_assigned','picked_up','delivered'].includes(o.status);
-    const isDelivered = o.status === 'delivered'; // reused as "collected" for pickup
-    const isCooking   = o.status === 'cooking';
-    const isPaid      = ['paid'].includes(o.status);
-    const isPending   = o.status === 'pending';
-
-    const pickupSteps = [
-      { lbl:'Order Placed', done: true },
-      { lbl:'Payment Confirmed', done: !isPending },
-      { lbl:'Being Prepared', done: isReady || isDelivered },
-      { lbl:'Ready to Collect', done: isReady || isDelivered },
-      { lbl:'Collected ✓', done: isDelivered },
-    ];
-    const activeStep = pickupSteps.reduce((last, s, i) => s.done ? i : last, 0);
-
-    document.getElementById('track-body').innerHTML = `
-      <div class="trk-hdr">
-        <div class="trk-no">Order ${o.order_number}</div>
-        <div class="trk-st" style="color:var(--green)">🏃 Self-Pickup</div>
-        <div class="trk-eta">${isDelivered ? 'Collected — enjoy!' : isReady ? 'Ready! Head to the counter' : 'Being prepared — come when ready'}</div>
-      </div>
-
-      <!-- Simplified pickup progress -->
-      <div class="prog">
-        ${pickupSteps.map((s,i) => `
-          <div class="ps ${i < activeStep ? 'done' : ''} ${i === activeStep ? 'act' : ''}">
-            <div class="pd">${i < activeStep ? '✓' : s.lbl[0]}</div>
-            <div class="pl">${s.lbl}</div>
-          </div>
-          ${i < pickupSteps.length-1 ? `<div style="flex:1;height:2px;background:${i < activeStep ? 'var(--green)' : 'var(--line2)'};margin-bottom:20px"></div>` : ''}`).join('')}
-      </div>
-
-      <div style="padding:0 16px 16px;max-width:500px;margin:0 auto">
-
-        <!-- Big order number card — show at counter -->
-        <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:14px;${isReady ? 'border:2px solid var(--green)' : ''}">
-          <div style="font-size:.75rem;color:var(--muted);letter-spacing:2px;margin-bottom:8px">SHOW THIS AT THE COUNTER</div>
-          <div style="font-family:var(--fh);font-size:2.8rem;letter-spacing:6px;color:var(--red)">${o.order_number}</div>
-          ${isReady ? `<div style="margin-top:10px;background:var(--green);color:#fff;border-radius:8px;padding:10px;font-weight:700;font-size:.9rem">✅ YOUR ORDER IS READY!</div>` : `<div style="margin-top:8px;font-size:.8rem;color:var(--muted)">Quote this number to KFC staff at the counter</div>`}
-        </div>
-
-        <!-- Location -->
-        <div class="card" style="margin-bottom:14px">
-          <div class="card-t">📍 WHERE TO COLLECT</div>
-          <div style="font-size:.88rem;margin-bottom:8px"><strong>KFC Narok</strong> — Narok Town Centre</div>
-          <a href="https://www.google.com/maps/search/KFC+Narok" target="_blank"
-            style="display:inline-block;background:var(--dark3);color:var(--white);padding:8px 14px;border-radius:8px;font-size:.82rem;text-decoration:none;border:1px solid var(--line2)">
-            🗺️ Open in Maps
-          </a>
-        </div>
-
-        <!-- Order summary -->
-        <div class="card">
-          <div class="card-t">ORDER SUMMARY</div>
-          ${(o.items||[]).map(i => `
-            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem">
-              <span>${i.name}${i.chickenType ? ` <span style="background:var(--red);color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px">${i.chickenType}</span>` : ''}${i.note ? ` <span style="color:var(--orange);font-size:.73rem">(${i.note})</span>` : ''}</span>
-              <span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">${F.money(i.price)}</span>
-            </div>
-          `).join('')}
-          <div style="display:flex;justify-content:space-between;padding:10px 0 2px;font-weight:700">
-            <span>Total</span><span style="color:var(--red)">${F.money(o.food_amount)}</span>
-          </div>
-        </div>
-
-        ${isDelivered ? `
-          <div class="card" style="margin-top:11px" id="rating-card">
-            <div class="card-t">RATE YOUR FOOD</div>
-            <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">How was the food?</p>
-            <div class="stars" id="food-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('food',${n})">⭐</span>`).join('')}</div>
-            <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="submitRating(${o.id}, true)">Submit Rating</button>
-          </div>` : ''}
-      </div>`;
-    return;
-  }
-  // ── END PICKUP UI ──────────────────────────────────────────────────────────
   
   const steps = [
     {lbl:'Order Placed', match:['pending','paid','cooking','ready','rider_assigned','picked_up','delivered']},
@@ -2698,7 +2790,7 @@ const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   }</div>`
 }[type];
   return  `<div class="kc" id="kc-${o.id}">
-     <div class="kc-top"><div class="kc-num">${o.order_number}${o.order_type==='pickup'?` <span style="background:var(--green);color:#fff;font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px;vertical-align:middle">🏃 PICKUP</span>`:''}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
+     <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
      <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
     <div class="kc-area">📍 ${o.customer_area||'Narok'}</div>
     ${o.mpesa_reference
@@ -2792,11 +2884,20 @@ async function renderAdminOrders(){
     :'<div class="empty"><div class="ei">📦</div><h3>NO ORDERS</h3></div>';
 }
 
+
 function orderRow(o){
   const items=(o.items||[]).slice(0,2).map(i=>i.name).join(', ')+(o.items?.length>2?'…':'');
+  const isPickup = o.order_type === 'pickup';
+  const typeBadge = isPickup
+    ? `<span style="background:#1a3a2a;color:#4ade80;border:1px solid #4ade80;font-size:.65rem;
+        font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px;margin-left:6px;
+        vertical-align:middle">🏃 SELF-PICKUP</span>`
+    : `<span style="background:#1a1a3a;color:#60a5fa;border:1px solid #60a5fa;font-size:.65rem;
+        font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.5px;margin-left:6px;
+        vertical-align:middle">🛵 DELIVERY</span>`;
   return `<div class="o-row">
     <div class="or-l">
-      <div class="or-num">${o.order_number}</div>
+      <div class="or-num">${o.order_number}${typeBadge}</div>
       <div class="or-m">${o.customer_name ? o.customer_name+' · ': ''}${items} · ${o.customer_area||'Narok'} · ${F.date(o.created_at)}</div>
       ${o.mpesa_reference
         ? `<div style="font-size:.72rem;color:var(--green);font-weight:600;margin-top:3px">💳 ${o.mpesa_reference}</div>`
@@ -2810,24 +2911,25 @@ function orderRow(o){
       <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
       ${!['paid','cooking','ready','delivered','cancelled'].includes(o.status) ? `
   <button class="btn btn-ghost btn-sm" style="margin-top:6px;color:var(--green);font-size:.75rem" 
-    onclick="markOrderPaid('${o.order_number}','${o.id}')">✅ Mark as Paid</button>` : ''}
+    onclick="markOrderPaid('${o.order_number}','${o.id}','${o.order_type||'delivery'}')">✅ Mark as Paid</button>` : ''}
     </div>
   </div>`;
 }
 
-async function markOrderPaid(num, id) {
+
+async function markOrderPaid(num, id, orderType) {
   if(!confirm(`Confirm payment received for ${num}?`)) return;
   const result = await apiFetch(`/api/admin/orders/${id}/mark-paid`, {method:'POST'});
   if(result?.success){
-    // Show PIN exactly once — it is never retrievable again
-    showPinOnceModal(num, result.pin);
+    const isPickup = result.isPickup || orderType === 'pickup';
+    showPinOnceModal(num, result.pin, isPickup);
     await renderAdminOrders();
   } else {
     toast(`Could not mark ${num} as paid — try again`, 'err');
   }
 }
 
-function showPinOnceModal(orderNum, pin){
+function showPinOnceModal(orderNum, pin, isPickup){
   // Remove any existing modal
   document.getElementById('pin-once-modal')?.remove();
   document.body.insertAdjacentHTML('beforeend',`
@@ -2837,11 +2939,15 @@ function showPinOnceModal(orderNum, pin){
       <div style="
         background:var(--dark2);border-radius:18px;padding:28px 24px;
         max-width:340px;width:92%;text-align:center;border:1px solid var(--line2)">
-        <div style="font-size:2.5rem;margin-bottom:8px">✅</div>
-        <div style="font-family:var(--fh);font-size:1.1rem;letter-spacing:2px;margin-bottom:4px">ORDER MARKED AS PAID</div>
+        <div style="font-size:2.5rem;margin-bottom:8px">${isPickup ? '🏃' : '✅'}</div>
+        <div style="font-family:var(--fh);font-size:1.1rem;letter-spacing:2px;margin-bottom:4px">${isPickup ? 'PICKUP ORDER — PAYMENT CONFIRMED' : 'ORDER MARKED AS PAID'}</div>
         <div style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Order: <strong style="color:var(--white)">${orderNum}</strong></div>
         <div style="background:var(--dark3);border:2px solid var(--red);border-radius:12px;padding:18px;margin-bottom:16px">
-          <div style="font-size:.72rem;color:var(--muted);letter-spacing:1px;margin-bottom:8px">DELIVERY PIN — SHOWN ONCE</div>
+          <div style="font-size:.72rem;color:var(--muted);letter-spacing:1px;margin-bottom:6px">🏃 SELF-PICKUP ORDER</div>
+          <div style="font-size:.84rem;color:var(--white);line-height:1.5">
+            Customer will collect at the counter.<br>
+            Kitchen has been notified to prepare this order.
+          </div>
           <div style="font-family:var(--fh);font-size:3rem;letter-spacing:12px;color:var(--red)">${pin}</div>
           <div style="font-size:.73rem;color:var(--muted);margin-top:8px">Sent to customer via SMS</div>
         </div>
@@ -3156,6 +3262,27 @@ async function toggleMenuItem(id,el) {
   toast(on?'Item enabled':'Item hidden');
 }
 
+async function deleteMenuItem(id, name, btn){
+  if(!confirm(`Permanently delete "${name}" from the menu?\n\nThis cannot be undone.`)) return;
+  btn.innerHTML = '⏳'; btn.disabled = true;
+  const res = await apiFetch(`/api/menu/${id}`, {method:'DELETE'});
+  if(res?.success || res !== null){
+    const row = document.getElementById(`mti-${id}`);
+    if(row){
+      row.style.transition = 'opacity .2s, transform .2s, max-height .3s';
+      row.style.opacity = '0';
+      row.style.transform = 'scaleY(0)';
+      row.style.maxHeight = '0';
+      row.style.overflow = 'hidden';
+      setTimeout(()=>row.remove(), 320);
+    }
+    toast(`"${name}" deleted from menu`, 'ok');
+  } else {
+    btn.innerHTML = '🗑️'; btn.disabled = false;
+    toast('Could not delete item — try again', 'err');
+  }
+}
+
 // RESTORE SESSION
 document.addEventListener('DOMContentLoaded', async () => {
 
@@ -3194,10 +3321,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const urlRole = new URLSearchParams(window.location.search).get('role');
   if(urlRole === 'kitchen') { selectRole('kitchen');    return; }
   if(urlRole === 'admin')   { screen('s-admin-login');  return; }
-  // NOTE: ?role=rider and ?role=customer do NOT force login if a session already exists.
-  // They only set the intended role for fresh visits. Session restore below handles refresh.
+  if(urlRole === 'rider')   { selectRole('rider');      return; }
+  if(urlRole === 'customer'){ selectRole('customer');   return; }
 
-  // Restore previous session — works regardless of ?role= param
+  // No ?role= in URL — restore previous session as normal
   if(localStorage.getItem('mb_kitchen')){
     role = 'kitchen'; launchKitchen(); return;
   }
@@ -3293,13 +3420,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     role = 'admin'; launchAdmin(); return;
   }
 
-  // No session found anywhere — send to appropriate login based on URL param
-  if(urlRole === 'rider')   { selectRole('rider');   return; }
-  if(urlRole === 'customer'){ selectRole('customer'); return; }
-
-  screen('s-landing');
 }); // ← closes DOMContentLoaded
-
 // onAuthStateChange — ONLY affects admin sessions.
 // Riders and customers are NOT Supabase auth users. Firing screen('s-landing')
 // on every SIGNED_OUT event would log out riders/customers whenever the anon
