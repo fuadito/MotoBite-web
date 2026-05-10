@@ -13,6 +13,7 @@ let user = {name:'', phone:''};
 let cart = [];
 let userLoc = null;
 let active0Id = null;
+let orderType = 'delivery'; // 'delivery' | 'pickup'
 let foodR = 0, riderR = 0;
 let riderState = {name:'', phone:'', rating:0, deliveries:0, online:false, regStep:0, regData:{}, activeOrder:null, collected:false, todayTrips:0, todayEarnings:0};
 let pinBuf ='';
@@ -1204,8 +1205,56 @@ function renderCartSheet(){
 </div>
     <div class="srow tot"><span>Pay to KFC Till</span><span>${F.money(total)}</span></div>
   </div>`;
-  ac.innerHTML=`<button class="btn btn-primary btn-full btn-lg" onclick="closeCart();cPanelLocation()">Confirm Order →</button>
-  <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
+  ac.innerHTML=`
+  <div style="font-size:.78rem;color:var(--muted);text-align:center;font-weight:700;letter-spacing:.5px;margin-bottom:10px">HOW WOULD YOU LIKE YOUR ORDER?</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+
+    <button id="btn-pickup" onclick="chooseOrderType('pickup')"
+      style="background:var(--dark3);border:2px solid var(--line2);border-radius:14px;
+             padding:18px 10px;cursor:pointer;color:var(--white);text-align:center;transition:.15s">
+      <div style="font-size:2.2rem;margin-bottom:6px">🚶</div>
+      <div style="font-family:var(--fh);font-size:.88rem;letter-spacing:1px">COLLECT</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Pick up at KFC Narok</div>
+      <div style="font-size:.68rem;color:var(--green);margin-top:3px;font-weight:600">No delivery fee</div>
+    </button>
+
+    <button id="btn-delivery" onclick="chooseOrderType('delivery')"
+      style="background:var(--dark3);border:2px solid var(--line2);border-radius:14px;
+             padding:18px 10px;cursor:pointer;color:var(--white);text-align:center;transition:.15s">
+      <div style="font-size:2.2rem;margin-bottom:6px">🛵</div>
+      <div style="font-family:var(--fh);font-size:.88rem;letter-spacing:1px">DELIVER</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Bring it to me</div>
+      <div style="font-size:.68rem;color:var(--orange);margin-top:3px;font-weight:600">+ Rider fee applies</div>
+    </button>
+
+  </div>
+  <button class="btn btn-ghost btn-full" style="color:var(--red);font-size:.82rem" onclick="cart=[];updateCartUI();closeCart()">🗑 Clear Cart</button>`;
+}
+
+function chooseOrderType(type){
+  orderType = type;
+  const pickup   = document.getElementById('btn-pickup');
+  const delivery = document.getElementById('btn-delivery');
+  if(pickup){
+    pickup.style.borderColor  = type==='pickup' ? 'var(--green)' : 'var(--line2)';
+    pickup.style.background   = type==='pickup' ? 'rgba(76,175,80,.18)' : 'var(--dark3)';
+  }
+  if(delivery){
+    delivery.style.borderColor = type==='delivery' ? 'var(--red)'   : 'var(--line2)';
+    delivery.style.background  = type==='delivery' ? 'rgba(229,57,53,.14)' : 'var(--dark3)';
+  }
+  // Brief highlight then navigate
+  setTimeout(() => {
+    closeCart();
+    if(type === 'pickup'){
+      // Self-pickup: skip location panel, go straight to payment
+      userLoc = { lat: null, lng: null, areaName: 'KFC Narok (Self-Pickup)', landmark: '' };
+      goToPayment();
+    } else {
+      // Delivery: show location panel
+      cPanelLocation();
+    }
+  }, 200);
 }
 
 function removeCartItem(i){
@@ -1613,7 +1662,7 @@ const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCas
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
 const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
-if(!userLoc){
+if(!userLoc && orderType !== 'pickup'){
   toast('📍 Please confirm your delivery location first','err',4000);
   cPanelLocation(); return;
 }
@@ -1640,10 +1689,12 @@ if(!amountPaid || amountPaid < orderTotal){
   const order=await apiFetch('/api/orders',{method:'POST',body:{
     customer_phone: user.phone,
     customer_name:  user.name,
-    items:orderItems, notes, location:userLoc,
-    customer_lat:   userLoc?.lat,
-    customer_lng:   userLoc?.lng,
-    customer_area:  userLoc?.areaName,
+    items:orderItems, notes,
+    order_type:     orderType,
+    location:       orderType === 'pickup' ? null : userLoc,
+    customer_lat:   orderType === 'pickup' ? null : userLoc?.lat,
+    customer_lng:   orderType === 'pickup' ? null : userLoc?.lng,
+    customer_area:  orderType === 'pickup' ? 'KFC Narok (Self-Pickup)' : userLoc?.areaName,
     mpesa_reference:`${mpesaName} · KES ${amountPaid}`
   }});
 
