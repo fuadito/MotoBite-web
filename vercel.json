@@ -2,11 +2,15 @@
   "version": 2,
   "builds": [
     {
-      "src": "*.html",
+      "src": "**/*",
       "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/pesapal-return",
+      "dest": "/pesapal-return.html"
+    },
     {
       "src": "/(.*)",
       "dest": "/$1"
