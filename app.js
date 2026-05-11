@@ -1995,13 +1995,6 @@ function cancelPesapalPayment(total){
   const btn = document.getElementById('card-pay-btn');
   if(btn){ btn.innerHTML=`💳 Pay with Card`; btn.disabled=false; }
 }
-
-// Clear _pendingCardOrderId only when payment succeeds or order expires
-// In your poll success handler:
-if(o.status !== 'pending'){
-  _pendingCardOrderId = null; // ✅ reset
-  clearInterval(_pesapalPollTimer);
-}
 // ── END PESAPAL ───────────────────────────────────────────────────────────────
 
 function showTracking(oid){
