@@ -1582,7 +1582,7 @@ function goToPayment(){
               <div style="font-family:var(--fh);font-size:.75rem;color:var(--muted);letter-spacing:1.5px;margin-bottom:10px">HOW TO PAY</div>
               <div style="display:flex;flex-direction:column;gap:8px;color:var(--white)">
                 <div>1. Go to <strong>M-Pesa → Lipa na M-Pesa → Buy Goods</strong></div>
-                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">XXXXXXX</strong></div>
+                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">9119681</strong></div>
                 <div>3. Amount: <strong style="color:var(--red)" id="pay-amt2">${F.money(total)}</strong></div>
               </div>
             </div>
@@ -1783,59 +1783,120 @@ async function confirmPayment(orderId) {
 //  6. Pesapal also sends an IPN webhook to backend (belt-and-suspenders)
 
 let _pesapalPollTimer = null;
+// ✅ Fix - track if an order was already created
+let _pendingCardOrderId = null;
 
 async function initPesapalPayment() {
-  if(_orderType !== 'pickup' && !userLoc){
-    toast('📍 Please confirm your delivery location first','err',4000);
-    cPanelLocation(); return;
+  const btn = document.getElementById('card-pay-btn');
+
+  // ── Guard: cart must have items ──────────────────────────────────────────
+  if (!cart || cart.length === 0) {
+    toast('Your cart is empty', 'err', 3000);
+    return;
   }
 
-  const btn = document.getElementById('card-pay-btn');
-  if(btn){ btn.innerHTML='<span class="spin"></span> Setting up payment...'; btn.disabled=true; }
+  // ── Calculate total & build order data ──────────────────────────────────
+  const total = cart.reduce((s, i) =>
+    s + i.price + Object.values(i.addOns || {}).reduce((a, x) => a + x.price, 0), 0
+  );
 
-  // ── Step 1: Create order ──────────────────────────────────────────────────
-  const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
-  const notes = cart.filter(i=>i.note||i.chickenType||Object.keys(i.addOns||{}).length).map(i=>{
-    const addOnStr = Object.values(i.addOns||{}).map(a=>a.label).join(', ');
-    return `${i.name}${i.chickenType?' ['+i.chickenType+']':''}${addOnStr?' + '+addOnStr:''}: ${i.note||''}`;
-  }).join('; ');
-  const orderItems = cart.map(item=>({
-    ...item, price: item.price + Object.values(item.addOns||{}).reduce((s,a)=>s+a.price,0)
+  const notes = cart
+    .filter(i => i.note || i.chickenType || Object.keys(i.addOns || {}).length)
+    .map(i => {
+      const addOnStr = Object.values(i.addOns || {}).map(a => a.label).join(', ');
+      return `${i.name}${i.chickenType ? ' [' + i.chickenType + ']' : ''}${addOnStr ? ' + ' + addOnStr : ''}: ${i.note || ''}`;
+    }).join('; ');
+
+  const orderItems = cart.map(item => ({
+    ...item,
+    price: item.price + Object.values(item.addOns || {}).reduce((s, a) => s + a.price, 0)
   }));
 
-  const order = await apiFetch('/api/orders', { method:'POST', body:{
-    customer_phone: user.phone,
-    customer_name:  user.name,
-    items:          orderItems,
-    notes,
-    location:       userLoc,
-    customer_lat:   userLoc?.lat,
-    customer_lng:   userLoc?.lng,
-    customer_area:  userLoc?.areaName,
-    order_type:     _orderType || 'delivery',
-    payment_method: 'card',
-    mpesa_reference: 'CARD — awaiting Pesapal confirmation'
-  }});
+  // ── Guard: delivery needs a location ────────────────────────────────────
+  const orderType = (typeof _orderType !== 'undefined') ? _orderType : 'delivery';
 
-  if(!order?.id){
-    if(btn){ btn.innerHTML=`💳 Pay ${F.money(total)} with Card`; btn.disabled=false; }
-    toast('Could not create order — check your connection','err',5000); return;
+  if (orderType !== 'pickup' && !userLoc) {
+    toast('📍 Please confirm your delivery location first', 'err', 4000);
+    cPanelLocation();
+    return;
   }
 
-  // Clear cart immediately — order is in the system
-  cart = []; updateCartUI();
-  document.getElementById('cart-float')?.classList.add('hidden');
+  // ── If pending order exists, re-use it ──────────────────────────────────
+  if (_pendingCardOrderId) {
+    if (btn) { btn.innerHTML = '<span class="spin"></span> Reopening payment...'; btn.disabled = true; }
 
-  // ── Step 2: Get Pesapal payment URL from backend ──────────────────────────
-  const session = await apiFetch(`/api/orders/${order.id}/pesapal-checkout`, { method:'POST' });
+    const session = await apiFetch(
+      `/api/orders/${_pendingCardOrderId}/pesapal-checkout`,
+      { method: 'POST' }
+    );
 
-  if(!session?.redirectUrl){
-    if(btn){ btn.innerHTML=`💳 Pay ${F.money(total)} with Card`; btn.disabled=false; }
-    toast(session?.error || 'Payment session failed — use M-Pesa instead','err',6000); return;
+    if (session?.redirectUrl) {
+      if (btn) { btn.innerHTML = `💳 Pay ${F.money(total)} with Card`; btn.disabled = false; }
+      openPesapalIframe(session.redirectUrl, _pendingCardOrderId, session.orderNumber, total);
+      return;
+    }
+
+    // Session re-fetch failed — fall through to create a new order
+    _pendingCardOrderId = null;
   }
 
-  // ── Step 3: Open iframe overlay ───────────────────────────────────────────
-  openPesapalIframe(session.redirectUrl, order.id, order.order_number, total);
+  // ── Disable button ───────────────────────────────────────────────────────
+  if (btn) { btn.innerHTML = '<span class="spin"></span> Setting up payment...'; btn.disabled = true; }
+
+  try {
+    // ── Step 1: Create order ───────────────────────────────────────────────
+    const order = await apiFetch('/api/orders', {
+      method: 'POST',
+      body: {
+        customer_phone:  user.phone,
+        customer_name:   user.name,
+        items:           orderItems,
+        notes,
+        location:        userLoc,
+        customer_lat:    userLoc?.lat,
+        customer_lng:    userLoc?.lng,
+        customer_area:   userLoc?.areaName,
+        order_type:      orderType,
+        payment_method:  'card',
+        mpesa_reference: 'CARD — awaiting Pesapal confirmation'
+      }
+    });
+
+    if (!order?.id) {
+      toast('Could not create order — check your connection', 'err', 5000);
+      if (btn) { btn.innerHTML = `💳 Pay ${F.money(total)} with Card`; btn.disabled = false; }
+      return;
+    }
+
+    // Save order ID in case user cancels and retries
+    _pendingCardOrderId = order.id;
+
+    // ── Step 2: Get Pesapal payment URL ───────────────────────────────────
+    const session = await apiFetch(
+      `/api/orders/${order.id}/pesapal-checkout`,
+      { method: 'POST' }
+    );
+
+    if (!session?.redirectUrl) {
+      toast(session?.error || 'Payment session failed — use M-Pesa instead', 'err', 6000);
+      if (btn) { btn.innerHTML = `💳 Pay ${F.money(total)} with Card`; btn.disabled = false; }
+      return;
+    }
+
+    // ── Step 3: Clear cart ONLY after URL confirmed ────────────────────────
+    cart = [];
+    updateCartUI();
+    document.getElementById('cart-float')?.classList.add('hidden');
+
+    // ── Step 4: Open iframe ────────────────────────────────────────────────
+    if (btn) { btn.innerHTML = `💳 Pay ${F.money(total)} with Card`; btn.disabled = false; }
+    openPesapalIframe(session.redirectUrl, order.id, order.order_number, total);
+
+  } catch (err) {
+    console.error('Pesapal init error:', err);
+    toast('Something went wrong — please try again', 'err', 5000);
+    if (btn) { btn.innerHTML = `💳 Pay ${F.money(total)} with Card`; btn.disabled = false; }
+  }
 }
 
 function openPesapalIframe(payUrl, orderId, orderNumber, total){
@@ -1926,13 +1987,20 @@ function closePesapalOverlay(){
   document.body.style.overflow = '';
 }
 
-function cancelPesapalPayment(){
+function cancelPesapalPayment(total){
   closePesapalOverlay();
   // Order exists in DB as 'pending' — customer can retry or pay via M-Pesa
   // Admin can see it and ignore if not paid after 30 min
   toast('Payment cancelled — your order is saved. Try again or use M-Pesa.','', 6000);
   const btn = document.getElementById('card-pay-btn');
   if(btn){ btn.innerHTML=`💳 Pay with Card`; btn.disabled=false; }
+}
+
+// Clear _pendingCardOrderId only when payment succeeds or order expires
+// In your poll success handler:
+if(o.status !== 'pending'){
+  _pendingCardOrderId = null; // ✅ reset
+  clearInterval(_pesapalPollTimer);
 }
 // ── END PESAPAL ───────────────────────────────────────────────────────────────
 
