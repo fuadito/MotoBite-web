@@ -1558,7 +1558,7 @@ function goToPayment(){
         <!-- ── PESAPAL CARD PANEL ── -->
         <div id="pay-panel-card">
           <div style="background:var(--dark3);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center;font-size:.83rem;color:var(--muted)">
-            Pay securely with <strong style="color:var(--white)">Visa · Mastercard · Amex</strong><br>
+            Pay securely with <strong style="color:var(--white)">MPESA · Visa · Mastercard · Amex</strong><br>
             or bank transfer — powered by Pesapal.
             <div style="margin-top:12px;display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap">
               <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg"
