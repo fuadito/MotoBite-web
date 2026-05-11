@@ -1553,56 +1553,10 @@ function goToPayment(){
           <div style="font-family:var(--fh);font-size:2.4rem;letter-spacing:2px;color:var(--red)" id="pay-amt">${F.money(total)}</div>
         </div>
 
-        <!-- Payment method tabs -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px">
-          <button id="tab-mpesa" onclick="switchPayTab('mpesa')"
-            style="padding:12px 8px;border-radius:10px;border:2.5px solid var(--red);
-                   background:var(--red);color:#fff;font-family:var(--fh);font-size:.8rem;
-                   letter-spacing:1px;cursor:pointer;transition:.15s">
-            <div style="font-size:1.3rem;margin-bottom:4px">💚</div>M-PESA
-          </button>
-          <button id="tab-card" onclick="switchPayTab('card')"
-            style="padding:12px 8px;border-radius:10px;border:2.5px solid var(--line2);
-                   background:var(--dark3);color:var(--white);font-family:var(--fh);font-size:.8rem;
-                   letter-spacing:1px;cursor:pointer;transition:.15s">
-            <div style="font-size:1.3rem;margin-bottom:4px">💳</div>CARD / OTHER
-          </button>
-        </div>
-
-        <!-- ── M-PESA PANEL ── -->
-        <div id="pay-panel-mpesa">
-          <div id="stk-status" style="display:none;background:var(--dark3);border:1px solid var(--green);
-            border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
-            <div style="font-size:1.4rem;margin-bottom:6px">📱</div>
-            <div style="font-family:var(--fh);font-size:.85rem;color:var(--green);letter-spacing:1px">CHECK YOUR PHONE</div>
-            <div style="font-size:.78rem;color:var(--muted);margin-top:4px">Enter your M-Pesa PIN to complete payment</div>
-          </div>
-          <div id="manual-pay">
-            <div style="background:var(--dark3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:.83rem">
-              <div style="font-family:var(--fh);font-size:.75rem;color:var(--muted);letter-spacing:1.5px;margin-bottom:10px">HOW TO PAY</div>
-              <div style="display:flex;flex-direction:column;gap:8px;color:var(--white)">
-                <div>1. Go to <strong>M-Pesa → Lipa na M-Pesa → Buy Goods</strong></div>
-                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">9119681</strong></div>
-                <div>3. Amount: <strong style="color:var(--red)" id="pay-amt2">${F.money(total)}</strong></div>
-              </div>
-            </div>
-            <div class="field" style="margin-bottom:12px">
-              <label class="field-lbl">M-Pesa Registered Name</label>
-              <input class="inp" id="mpesa-name" placeholder="e.g. JOHN DOE" style="text-transform:uppercase"/>
-            </div>
-            <div class="field" style="margin-bottom:18px">
-              <label class="field-lbl">Amount Paid (KES)</label>
-              <input class="inp" id="mpesa-amount" type="number" inputmode="numeric"
-                placeholder="${total}" value="${total}"/>
-            </div>
-          </div>
-          <button class="btn btn-primary btn-full btn-lg" id="pay-btn" onclick="initPay()">
-            ✅ I Have Paid — Place Order
-          </button>
-        </div>
-
+  
+  
         <!-- ── PESAPAL CARD PANEL ── -->
-        <div id="pay-panel-card" style="display:none">
+        <div id="pay-panel-card">
           <div style="background:var(--dark3);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center;font-size:.83rem;color:var(--muted)">
             Pay securely with <strong style="color:var(--white)">Visa · Mastercard · Amex</strong><br>
             or bank transfer — powered by Pesapal.
@@ -1629,7 +1583,7 @@ function goToPayment(){
           </div>
 
           <button class="btn btn-primary btn-full btn-lg" id="card-pay-btn" onclick="initPesapalPayment()">
-            💳 Pay ${F.money(total)} with Card
+             Pay ${F.money(total)} for your order
           </button>
           <div style="text-align:center;margin-top:10px;font-size:.72rem;color:var(--muted)">
             Secured by <strong style="color:var(--white)">Pesapal</strong> · PCI-DSS compliant · SSL encrypted
@@ -1639,138 +1593,6 @@ function goToPayment(){
       </div>`;
   }
   cPanel('payment');
-}
-
-// Switch M-Pesa ↔ Card tabs
-function switchPayTab(tab){
-  const isMpesa = tab === 'mpesa';
-  const active  = { background:'var(--red)', borderColor:'var(--red)', color:'#fff' };
-  const idle    = { background:'var(--dark3)', borderColor:'var(--line2)', color:'var(--white)' };
-  const apply   = (el, styles) => el && Object.assign(el.style, styles);
-
-  apply(document.getElementById('tab-mpesa'), isMpesa ? active : idle);
-  apply(document.getElementById('tab-card'),  isMpesa ? idle : active);
-
-  const mpesaPane = document.getElementById('pay-panel-mpesa');
-  const cardPane  = document.getElementById('pay-panel-card');
-  if(mpesaPane) mpesaPane.style.display = isMpesa ? 'block' : 'none';
-  if(cardPane)  cardPane.style.display  = isMpesa ? 'none'  : 'block';
-}
-
-async function initPay() {
-const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCase();
-const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
-const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
-
-if(!userLoc && orderType !== 'pickup'){
-  toast('📍 Please confirm your delivery location first','err',4000);
-  cPanelLocation(); return;
-}
-
-if(!mpesaName || mpesaName.length < 3){
-  toast('Enter your M-Pesa registered name','err'); return;
-}
-
-if(!amountPaid || amountPaid < orderTotal){
-  toast(`Amount must be at least KES ${orderTotal.toLocaleString()}`,'err'); return;
-}
-  const btn=document.getElementById('pay-btn');
-  btn.innerHTML='<span class="spin"></span> Placing order...'; btn.disabled=true;
-  const total=orderTotal;
-  const notes=cart.filter(i=>i.note||i.chickenType||Object.keys(i.addOns||{}).length).map(i=>{
-    const addOnStr = Object.values(i.addOns||{}).map(a=>a.label).join(', ');
-    return `${i.name}${i.chickenType?' ['+i.chickenType+']':''}${addOnStr?' + '+addOnStr:''}: ${i.note||''}`;
-  }).join('; ');
-  const orderItems = cart.map(item => ({
-    ...item,
-    price: item.price + Object.values(item.addOns||{}).reduce((s,a)=>s+a.price,0)
-  }));
-
-  const order=await apiFetch('/api/orders',{method:'POST',body:{
-    customer_phone: user.phone,
-    customer_name:  user.name,
-    items:orderItems, notes,
-    order_type:     orderType,
-    location:       orderType === 'pickup' ? null : userLoc,
-    customer_lat:   orderType === 'pickup' ? null : userLoc?.lat,
-    customer_lng:   orderType === 'pickup' ? null : userLoc?.lng,
-    customer_area:  orderType === 'pickup' ? 'KFC Narok (Self-Pickup)' : userLoc?.areaName,
-    mpesa_reference:`${mpesaName} · KES ${amountPaid}`
-  }});
-
-  
-
-  // If order creation failed — stop here, show error, let customer try again
-  if(!order?.id){
-    btn.innerHTML='✅ I Have Paid — Place Order'; btn.disabled=false;
-    toast('Could not place order — check your connection and try again','err',5000);
-    return;
-  }
-
-  const oid=order.id;
-  active0Id=oid;
-  localStorage.setItem('mb_active_order',oid);
- 
-  // Show STK status box if the backend sent a push, otherwise keep manual instructions
-    const stkBox=document.getElementById('stk-status');
-  const manualPay=document.getElementById('manual-pay');
-  if(order.stkSent){
-    // STK push was sent — highlight the phone prompt
-    if(stkBox)  stkBox.style.display='block';
-    if(manualPay) manualPay.style.display='none';
-    cart = []; updateCartUI();
-    document.getElementById('cart-float')?.classList.add('hidden'); // hide View Order btn
-    btn.innerHTML='📱 Waiting for M-Pesa payment...'; btn.disabled=true;
-    toast('Check your phone — M-Pesa prompt sent! 📱','ok',6000);
-  } else {
-    // Manual payment flow
-    btn.innerHTML = '✅ Confirm Payment';
-    btn.disabled = false;
-    enableEnterKey('auth-btn');
-    btn.onclick = () => confirmPayment(oid);
-    toast('Order placed! Pay via M-Pesa, then click "Confirm Payment" 📱', 'ok', 5000);
-    cart = [];
-    updateCartUI();
-    document.getElementById('cart-float')?.classList.add('hidden'); // hide View Order btn
-    showTracking(oid);
-  } // end else
-} // end initPay
-
-// Customer confirms they have paid via M-Pesa
-async function confirmPayment(orderId) {
-  const btn = document.getElementById('pay-btn');
-  if (!btn) return;
-  
-  // Confirm with user
-  if (!confirm('Have you completed the M-Pesa payment?')) return;
-  
-  btn.innerHTML = '<span class="spin"></span> Confirming payment...';
-  btn.disabled = true;
-  
-  const res = await apiFetch(`/api/orders/${orderId}/confirm-payment`, {
-    method: 'PUT'
-  });
-  
-  if (res?.success) {
-    toast('✅ Payment confirmed! Your order is being prepared.', 'ok');
-    // Clear cart and hide float so "View Order" button disappears
-    cart = [];
-    updateCartUI();
-    // Update order status
-    active0Id = orderId;
-    localStorage.setItem('mb_active_order', orderId);
-    // Refresh tracking to show updated status
-    showTracking(orderId);
-  } else {
-    toast(res?.error || '❌ Failed to confirm payment. Try again.', 'err');
-    btn.innerHTML = '✅ I Have Paid';
-    btn.disabled = false;
-
-    if (res?.success) {
-    document.getElementById('cart-float')?.classList.add('hidden'); // ADD
-    
-    }
-  }
 }
 
 // ── PESAPAL CARD PAYMENT ──────────────────────────────────────────────────────
