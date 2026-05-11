@@ -2706,34 +2706,41 @@ function renderKitchen(){
     ?rd.map(o=>kCard(o,'rdy')).join('')
     :'<div class="empty"><div class="ei" style="font-size:2rem">📦</div><h3 style="font-size:.85rem">NONE READY</h3></div>';
 }
-function kCard(o,type){   //Builds a single order card for the kitchen board (order index, type: new, cook or rdy)
-  // use created_at as fallback for pending orders
-const baseTime = o.paid_at || o.created_at;
-const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
-  const urgent=ageMins>15&&type!=='rdy';   // two conditions: order waiting time more than 15min, order not in the ready column. Then the order is deemed urgent.
- const action={
-  new: o.status==='pending'
-    ? `<div style="font-size:.7rem;color:var(--orange);margin-bottom:6px">⏳ AWAITING PAYMENT</div>
-       <button class="kb cook" disabled style="opacity:.4;cursor:not-allowed">🔥 Start Cooking</button>`
-    : `<div style="font-size:.7rem;color:var(--green);margin-bottom:6px">✅ PAID — Ready to cook</div>
-       <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
-  cook:`<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
-  rdy:`<div>${o.status==='rider_assigned'
-    ? '<div class=\"kb wait\">🏍️ Rider Assigned</div>'
-    : '<div class=\"kb wait\">⏳ Awaiting Rider</div><button class=\"kb cook\" style=\"margin-top:6px;font-size:.75rem\" onclick=\"kRedispatch('+o.id+')\" >🔄 Re-dispatch</button>'
-  }</div>`
-}[type];
-  return  `<div class="kc" id="kc-${o.id}">
-     <div class="kc-top"><div class="kc-num">${o.order_number}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
-     <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
-    <div class="kc-area">📍 ${o.customer_area||'Narok'}</div>
+function kCard(o,type){
+  const baseTime = o.paid_at || o.created_at;
+  const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
+  const urgent = ageMins>15 && type!=='rdy';
+  const isPickup = o.order_type === 'pickup';
+  const typePill = isPickup
+    ? `<span style="background:#1a7a1a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🚶 SELF-PICKUP</span>`
+    : `<span style="background:#1a3a7a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🛵 DELIVERY</span>`;
+  const locationLine = isPickup
+    ? `<div class="kc-area">🚶 Counter collection</div>`
+    : `<div class="kc-area">📍 ${o.customer_area||'Narok'}</div>`;
+  const rdyAction = isPickup
+    ? `<div class="kb wait" style="background:var(--green);color:#fff">🚶 Ready for Collection</div>`
+    : (o.status==='rider_assigned'
+        ? `<div class="kb wait">🏍️ Rider Assigned</div>`
+        : `<div class="kb wait">⏳ Awaiting Rider</div><button class="kb cook" style="margin-top:6px;font-size:.75rem" onclick="kRedispatch(${o.id})">🔄 Re-dispatch</button>`);
+  const action = {
+    new: o.status==='pending'
+      ? `<div style="font-size:.7rem;color:var(--orange);margin-bottom:6px">⏳ AWAITING PAYMENT</div>
+         <button class="kb cook" disabled style="opacity:.4;cursor:not-allowed">🔥 Start Cooking</button>`
+      : `<div style="font-size:.7rem;color:var(--green);margin-bottom:6px">✅ PAID — Ready to cook</div>
+         <button class="kb cook" onclick="kUpdate(${o.id},'cooking')">🔥 Start Cooking</button>`,
+    cook: `<button class="kb rdy" onclick="kUpdate(${o.id},'ready')">✅ Mark Ready</button>`,
+    rdy:  `<div>${rdyAction}</div>`
+  }[type];
+  return `<div class="kc" id="kc-${o.id}">
+    <div class="kc-top"><div class="kc-num">${o.order_number}${typePill}</div><div class="kc-age${urgent?' urg':''}">⏱ ${ageMins}m</div></div>
+    <div class="kc-items">${(o.items||[]).map(i=>`<div class="kc-item">${i.name}${i.chickenType?`<span style="background:var(--red);color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px">${i.chickenType}</span>`:''} ${i.note?`<div class="kc-note">⚠️ ${i.note}</div>`:''}</div>`).join('')}</div>
+    ${locationLine}
     ${o.mpesa_reference
       ? `<div style="font-size:.72rem;color:var(--green);font-weight:600;margin-top:4px">💳 ${o.mpesa_reference}</div>`
       : '<div style="font-size:.72rem;color:var(--orange);margin-top:4px">⏳ Awaiting payment proof</div>'}
     <div class="kc-acts">${action}</div>
   </div>`;
 }
-
 async function kUpdate(id,status){
   // Optimistic update
   const o=kOrders.find(x=>x.id===id);
@@ -2770,16 +2777,25 @@ function launchAdmin(){
   screen('s-admin');
   renderAdminOverview();
 
-  // ADD — auto-refresh orders when any order status changes
+  // Subscribe to both INSERT (new orders) and UPDATE (status changes)
+  supa.channel('admin-orders-watch').unsubscribe().catch(()=>{});
   supa.channel('admin-orders-watch')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'orders'},()=>{
+      if(document.getElementById('ap-orders')?.classList.contains('on')) renderAdminOrders();
+      renderAdminOverview();
+    })
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orders'},()=>{
-      // Only refresh if currently on orders tab
-      if(document.getElementById('ap-orders')?.classList.contains('on')){
-        renderAdminOrders();
-      }
-      renderAdminOverview(); // always refresh stats
+      if(document.getElementById('ap-orders')?.classList.contains('on')) renderAdminOrders();
+      renderAdminOverview();
     })
     .subscribe();
+
+  // 20-second polling fallback for when Realtime blips
+  if(window._adminPollTimer) clearInterval(window._adminPollTimer);
+  window._adminPollTimer = setInterval(()=>{
+    if(document.getElementById('ap-orders')?.classList.contains('on')) renderAdminOrders();
+    renderAdminOverview();
+  }, 20000);
 }
 
 function aTab(id,btn){
@@ -3062,17 +3078,19 @@ async function renderAdminMenu() {
 
     + // Concatenate with the items list
 // Items List
- `${items.map(item=>`
+`${items.map(item=>`
 
-     <div class="menu-toggle-item">
+     <div class="menu-toggle-item" id="mti-${item.id}">
       <div class="mt-info">
         <div class="mt-name">${item.name}</div>
         <div class="mt-cat">${item.category}</div>
       </div>
       <div class="mt-price">${F.money(item.price)}</div>
       <div class="toggle-sm${item.available?' on':''}" id="mt-${item.id}" onclick="toggleMenuItem(${item.id},this)"></div>
+      <button onclick="deleteMenuItem(${item.id},'${item.name.replace(/'/g,"\\'")}',this)"
+        style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:4px 6px;opacity:.6;line-height:1"
+        title="Delete item">🗑️</button>
     </div>`).join('')}`;
-}
 
 
 // ── ADMIN REVENUE HISTORY ─────────────────────────────────────────────────────
