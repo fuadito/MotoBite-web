@@ -1402,14 +1402,18 @@ a {
 }
 .stars {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     justify-content: center;
+    margin: 4px 0;
 }
 .star {
-    font-size: 1.85rem;
+    font-size: 2rem;
     cursor: pointer;
-    filter: grayscale(1) opacity(.3);
-    transition: transform .15s;
+    transition: transform .1s;
+    line-height: 1;
+}
+.star:hover {
+    transform: scale(1.2);
 }
 .star.lit {
     filter: none;

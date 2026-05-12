@@ -2105,7 +2105,7 @@ function historyRow(o){
     </div>
     <div class="or-r">
       <div class="or-p">${F.money(o.food_amount)}</div>
-      <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status)}</span>
+      <span class="badge ${F.badge(o.status)}" style="margin-top:3px">${F.status(o.status, o.order_type)}</span>
     </div>
   </div>`;
 }
@@ -2276,33 +2276,49 @@ const etaText = o.status === 'delivered'
 
   // ── Rating card ────────────────────────────────────────────────────────
   // ✅ Bug 5 fixed — unified rating system using setRating() + submitRating()
-  const ratingCard = o.status === 'delivered' ? `
-    <div class="card" style="margin-top:11px" id="rating-card">
-      <div class="card-t">RATE YOUR EXPERIENCE</div>
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
-        Food quality:
+
+  // ✅ After — also checks if already rated:
+const alreadyRated = o.rated ||localStorage.getItem(`mb_rated_${oid}`) === 'true';
+
+const ratingCard = (o.status === 'delivered' && !alreadyRated) ? `
+  <div class="card" style="margin-top:11px" id="rating-card">
+    <div class="card-t">RATE YOUR EXPERIENCE</div>
+
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
+      Food quality:
+    </p>
+    <div class="stars" id="food-stars">
+      ${[1,2,3,4,5].map(n =>
+        `<span class="star" onclick="setRating('food',${n})">☆</span>`
+      ).join('')}
+    </div>
+
+    ${!isPickup ? `
+      <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">
+        Rider service:
       </p>
-      <div class="stars" id="food-stars">
+      <div class="stars" id="rider-stars">
         ${[1,2,3,4,5].map(n =>
-          `<span class="star" onclick="setRating('food',${n})">⭐</span>`
+          `<span class="star" onclick="setRating('rider',${n})">☆</span>`
         ).join('')}
       </div>
-      ${!isPickup ? `
-        <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">
-          Rider service:
-        </p>
-        <div class="stars" id="rider-stars">
-          ${[1,2,3,4,5].map(n =>
-            `<span class="star" onclick="setRating('rider',${n})">⭐</span>`
-          ).join('')}
-        </div>
-      ` : ''}
-      <button class="btn btn-primary btn-full" style="margin-top:14px"
-        onclick="submitRating()">
-        Submit Rating
-      </button>
-    </div>
-  ` : '';
+    ` : ''}
+
+    <button class="btn btn-primary btn-full" style="margin-top:14px"
+      onclick="submitRating()">
+      Submit Rating
+    </button>
+  </div>
+` : (o.status === 'delivered' && alreadyRated) ? `
+
+  <!-- ✅ Show thank you message instead of rating card -->
+  <div style="text-align:center;padding:16px;font-size:.82rem;color:var(--muted)">
+    ⭐ Thanks for rating this order!
+  </div>
+
+` : '';
+ 
+
 
   // ── Render HTML ────────────────────────────────────────────────────────
   document.getElementById('track-body').innerHTML = `
@@ -2454,17 +2470,75 @@ async function selectRider(orderId, riderPhone, el) {
   }
 }
 
-function setRating(type,val){
-    if(type==='food')foodR=val; else riderR=val;
-    document.querySelectorAll(`#${type}-stars .star`).forEach((s,i)=>s.classList.toggle('lit',i<val)); // food and rider rating upto five stars
+let _foodRating=0;
+let _riderRating=0; // global vars to store current ratings before submission
+
+function setRating(type, stars){
+    if(type==='food')_foodRating=stars;   
+    if(type==='rider')_riderRating=stars;
+
+    // Highlight stars up to the selected rating for both food and rider
+    const container = document.getElementById(`${type}-stars`);
+    if(!container) return;
+
+ container.querySelectorAll('.star').forEach((s,i)=>{
+  s.textContent = i<stars ? '⭐' : '☆';
+ });
+
+ // visual feedback: briefly scale up the selected stars
+ const selectedStars = container.querySelectorAll('.star')[stars-1];
+ if(selectedStars){
+  selectedStars.style.transform = 'scale(1.4)';
+  setTimeout(() => 
+    selectedStars.style.transform = 'scale(1)', 200);
+  
+ }
 }
-// async used to communicate with backed to await API-fetch
 async function submitRating(){
-    if(!foodR||!riderR){ toast('Please rate both food and rider','err'); return; } //checks that both ratings have been set. foodR & riderR starts with 0, !foodR-if foodR = 0,(not yet rated). if either missing show an error, "return" stops the function, nothing submitted until both rated. 
-    await apiFetch(`/api/orders/${active0Id}/rate`,{method:'POST',body:{foodStars:foodR,riderStars:riderR}}); //sends both ratings to backend against the specific order ID. stored in supabase, foodR goes to restaurant, riderR goes to rider's profile. await means the function pause until backend responds before moving to next line.
-    const rc=document.getElementById('rating-card');
-    if(rc) rc.innerHTML='<div style="text-align:center;padding:14px"><div style="font-size:2rem">🙏</div><p style="font-family:var(--fh);letter-spacing:1px;margin-top:8px">THANK YOU!</p><p style="font-size:.82rem;color:var(--muted)">Your feedback helps us improve</p></div>';
-  toast('Rating submitted! Thank you 🙏','ok');
+  // Check order type to determine if rider rating is required
+  const o = await apiFetch(`/api/orders/${active0Id}`);
+  const isPickup = o?.order_type === 'pickup' || o?.customer_area === 'KFC Narok (Self-pickup)';
+
+  // Food rating is always required
+
+    if(!_foodRating){
+        toast('Please rate the food quality', 'err');
+        return;
+    }
+
+    // Rider rating is required for delivery orders
+    if(!isPickup && !_riderRating){
+        toast('Please rate the rider service', 'err');
+        return;
+    }
+
+    const btn = document.querySelector('#rating-card button');
+    if(btn){ btn.innerHTML = '<span class="spin"></span> Submitting...'; btn.disabled = true; }
+
+    const res = await apiFetch(`/api/orders/${active0Id}/rate`, {
+        method: 'POST',
+        body: {
+            foodStars: _foodRating,
+            riderStars: isPickup ? null : _riderRating
+        }
+    });
+
+    if(res?.success){
+        toast('⭐ Thanks for your rating!', 'ok');
+
+        // mark order as rated to prevent multiple submissions (in case of re-render) 
+        localStorage.setItem(`mb_rated_${active0Id}`, 'true');
+        // Hide rating card after successful submission
+        document.getElementById('rating-card')?.remove();
+        // Reset
+        _foodRating = 0;
+        _riderRating = 0;
+        renderTracking(active0Id); // re-render to show updated ratings
+    }
+      else {
+        toast(res?.error || 'Failed to submit rating. Please try again.', 'err');
+        if(btn){ btn.innerHTML = 'Submit Rating'; btn.disabled = false; }
+    }
 }     
 
 
@@ -3150,7 +3224,7 @@ function kCard(o,type){
   const baseTime = o.paid_at || o.created_at;
   const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   const urgent = ageMins>15 && type!=='rdy';
-  const isPickup = o.order_type === 'pickup' || o.customer_area === 'KFC Narok (self-pickup)';
+  const isPickup = o.order_type === 'pickup' || o.customer_area === 'KFC Narok (Self-pickup)';
   const typePill = isPickup
     ? `<span style="background:#1a7a1a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🚶 SELF-PICKUP</span>`
     : `<span style="background:#1a3a7a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🛵 DELIVERY</span>`;
