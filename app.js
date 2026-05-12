@@ -1582,7 +1582,7 @@ function goToPayment(){
               <div style="font-family:var(--fh);font-size:.75rem;color:var(--muted);letter-spacing:1.5px;margin-bottom:10px">HOW TO PAY</div>
               <div style="display:flex;flex-direction:column;gap:8px;color:var(--white)">
                 <div>1. Go to <strong>M-Pesa → Lipa na M-Pesa → Buy Goods</strong></div>
-                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">XXXXXXX</strong></div>
+                <div>2. Till Number: <strong style="color:var(--red);font-size:1.05rem">9119681</strong></div>
                 <div>3. Amount: <strong style="color:var(--red)" id="pay-amt2">${F.money(total)}</strong></div>
               </div>
             </div>
