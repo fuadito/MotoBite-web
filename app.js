@@ -1660,6 +1660,9 @@ function switchPayTab(tab){
 }
 
 async function initPay() {
+  if(!cart || !cart.length){
+    toast('Your cart is empty! Add items before placing an order.','err',4000); return;
+  }
 const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCase();
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
 const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
@@ -1670,11 +1673,11 @@ if(!userLoc && orderType !== 'pickup'){
 }
 
 if(!mpesaName || mpesaName.length < 3){
-  toast('Enter your M-Pesa registered name','err'); return;
+  toast('Enter your M-Pesa registered name','err',4000); return;
 }
 
 if(!amountPaid || amountPaid < orderTotal){
-  toast(`Amount must be at least KES ${orderTotal.toLocaleString()}`,'err'); return;
+  toast(`Amount must be at least KES ${orderTotal.toLocaleString()}`,'err',4000); return;
 }
   const btn=document.getElementById('pay-btn');
   btn.innerHTML='<span class="spin"></span> Placing order...'; btn.disabled=true;
@@ -1786,7 +1789,7 @@ async function confirmPayment(orderId) {
 let _pesapalPollTimer = null;
 // ✅ Fix - track if an order was already created
 let _pendingCardOrderId = null;
-
+let _savedCart = []; // In case we need to restore cart if payment fails or is cancelled
 async function initPesapalPayment() {
   const btn = document.getElementById('card-pay-btn');
 
@@ -1885,6 +1888,7 @@ async function initPesapalPayment() {
     }
 
     // ── Step 3: Clear cart ONLY after URL confirmed ────────────────────────
+    _savedCart = [...cart]; // backup in case we need to restore
     cart = [];
     updateCartUI();
     document.getElementById('cart-float')?.classList.add('hidden');
@@ -1990,6 +1994,12 @@ function closePesapalOverlay(){
 
 function cancelPesapalPayment(total){
   closePesapalOverlay();
+
+  // Restore cart so customer can try again or choose M-Pesa instead
+  if(_savedCart && _savedCart.length){
+  cart = [..._savedCart];
+  updateCartUI();
+  }
   // Order exists in DB as 'pending' — customer can retry or pay via M-Pesa
   // Admin can see it and ignore if not paid after 30 min
   toast('Payment cancelled — your order is saved. Try again or use M-Pesa.','', 6000);
@@ -2035,6 +2045,9 @@ function historyRow(o){
 }
 
 async function renderTracking(oid) {
+  // Always hide the cart-float while on tracking screen — no need to view cart once order is placed, and it can cause confusion if it shows old items while waiting for API response
+  document.getElementById('cart-float')?.classList.add('hidden');
+
   let o = await apiFetch(`/api/orders/${oid}`);
   if(!o){
     document.getElementById('track-body').innerHTML = `
@@ -3220,10 +3233,26 @@ async function unsuspendRider(phone, name) {
 
 async function renderAdminMenu() {
     const data=await apiFetch('/api/menu');
-    const items=data?Object.values(data).flat():Object.entries(MENU).flatMap(([c,items])=>items.map(i=>({...i,category:c,available:true})));
-    document.getElementById('a-menu').innerHTML=
+    // Normalize menu items - always have id, category, and available properties for consistent rendering and toggling
+  const items = data
+  ? Object.entries(data).flatMap(([c,catItems])=>
+  (catItems || []).map(i=>({ ...i, category: i.category || cat })))
+  : Object.entries(MENU).flatMap(([cat,items])=> catItems.map(i=>({ ...i, category: cat, available: true })));
+
+  // Group items by category for the dropdown and rendering
+  const byCategory = {};
+  items.forEach(item => {
+    const cat = item.category || 'Other';
+    if(!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(item); 
+  })
+
+  // build the HTML with an add-item form at the top, followed by the list of items with toggles and delete buttons
+  const el = document.getElementById('admin-menu-list');
+  if(!el) return;
+  el.innerHTML =
     // ADD NEW MENU ITEM
-       `<div class="card" style="margin-bottom:14px">
+       `<div class="card" style="margin-bottom:20px">
         <div class="card-t">ADD NEW ITEM</div>
         <div class="field" style="margin-bottom:8px">
             <label class="field-lbl">Name</label>
@@ -3232,7 +3261,8 @@ async function renderAdminMenu() {
         <div class="field" style="margin-bottom:8px">
             <label class="field-lbl">Category</label>
             <select class="inp" id="new-item-cat">
-                ${Object.keys(MENU).map(c=>`<option value="${c}">${c}</option>`).join('')}
+               ${['Brand New', ...Object.keys(MENU).filter(c => c !== 'Brand New')]
+  .map(c=>`<option value="${c}">${c}</option>`).join('')}
             </select>
         </div>
         <div class="field" style="margin-bottom:8px">
@@ -3247,7 +3277,7 @@ async function renderAdminMenu() {
             <label class="field-lbl">Image URL (optional)</label>
             <input class="inp" id="new-item-img" placeholder="https://..."/>
         </div>
-        <div class="field" style="margin-bottom:12px">
+        <div class="field" style="margin-bottom:14px">
             <label class="field-lbl">Position in Category</label>
             <input class="inp" id="new-item-order" type="number" placeholder="e.g. 3 — leave blank to add at end" min="1"/>
             <div style="font-size:.74rem;color:var(--muted);margin-top:4px">Lower number = appears higher in the list</div>
@@ -3255,21 +3285,29 @@ async function renderAdminMenu() {
         <button class="btn btn-primary btn-full" onclick="addMenuItem()">+ Add to Menu</button>
     </div>`
 
-    + // Concatenate with the items list
-// Items List
-`${items.map(item=>`
+// Items grouped by category
+  + Object.entries(byCategory).map(([cat,catItems])=>`
+  <div style="margin-bottom:22px">
 
-     <div class="menu-toggle-item" id="mti-${item.id}">
+  <!-- Category header -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-family:var(--fh);font-size:.72rem;letter-spacing:1.5px;color:var(--muted);border-radius:8px;padding:7px 12px;background:var(--dark3"><span>${cat.toUpperCase()}</span><span style="color:var(--orange)">${catItems.length} item${catItems.length!==1?'s':''}</span></div>
+
+  <!-- Items in category -->
+  ${catItems.map(item=>`
+    <div class="menu-toggle-item" id="mti-${item.id}">
       <div class="mt-info">
         <div class="mt-name">${item.name}</div>
-        <div class="mt-cat">${item.category}</div>
+        <div class="mt-cat" style="font-size:.72rem;color:var(--muted);margin-top:2px">${item.description || ''}</div>
       </div>
+
       <div class="mt-price">${F.money(item.price)}</div>
-      <div class="toggle-sm${item.available?' on':''}" id="mt-${item.id}" onclick="toggleMenuItem(${item.id},this)"></div>
+      <div class="toggle-sm${item.available?' on':''}" id="mt-${item.id}" onclick="toggleMenuItem(${item.id},this)" title="${item.available?'Available - click to hide':'Hidden - click to show'}"></div>
+
       <button onclick="deleteMenuItem(${item.id},'${item.name.replace(/'/g,"\\'")}',this)"
-        style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:4px 6px;opacity:.6;line-height:1"
-        title="Delete item">🗑️</button>
-    </div>`).join('')}`;
+        style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:4px 6px;opacity:.6;line-height:1;flex-shrink:0"
+        title="Delete ${item.name}">🗑️</button>
+    </div>`).join('')}
+  </div>`).join('');
 
 }
 // ── ADMIN REVENUE HISTORY ─────────────────────────────────────────────────────
