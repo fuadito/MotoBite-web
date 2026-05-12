@@ -3390,83 +3390,182 @@ async function renderAdminMenu() {
 // Separate tab — does not touch or replace today's metrics on Overview.
 // Shows a day-by-day breakdown for the past N days with totals.
 
-async function renderAdminRevenue(){
+async function renderAdminRevenue() {
   const el = document.getElementById('a-revenue');
-  if(!el) return;
+  if (!el) return;
   el.innerHTML = `<div style="text-align:center;padding:30px"><span class="spin"></span></div>`;
 
-  // Read selected period from dropdown (if rendered), default 30
   const days = parseInt(document.getElementById('rev-days-sel')?.value || '30');
-  const data  = await apiFetch(`/api/admin/revenue/history?days=${days}`);
+  const data = await apiFetch(`/api/admin/revenue/history?days=${days}`);
 
-  if(!data){
-    el.innerHTML = `<div class="empty"><div class="ei">📊</div><h3>COULD NOT LOAD REVENUE</h3><p>Check your connection and try again</p></div>`;
+  if (!data) {
+    el.innerHTML = `<div class="empty">
+      <div class="ei">📊</div>
+      <h3>COULD NOT LOAD REVENUE</h3>
+      <p>Check your connection and try again</p>
+    </div>`;
     return;
   }
 
-  const { history=[], grand_total=0 } = data;
+  // ── Apply frontend clear filter ────────────────────────────────────────
+  const clearedAt = localStorage.getItem(REVENUE_CLEAR_KEY); // e.g. "2025-05-12"
+  
+  let { history = [], grand_total = 0 } = data;
+
+  if (clearedAt) {
+    // Hide all days on or before the cleared date
+    history = history.filter(d => d.date > clearedAt);
+    // Recalculate grand total for visible entries only
+    grand_total = history.reduce((s, d) => s + (d.total || 0), 0);
+  }
 
   const fmtDate = dateStr => {
-    const today = new Date().toISOString().slice(0,10);
-    const yest  = new Date(Date.now()-86400000).toISOString().slice(0,10);
-    if(dateStr===today) return 'Today';
-    if(dateStr===yest)  return 'Yesterday';
-    const d = new Date(dateStr+'T00:00:00');
-    return d.toLocaleDateString('en-KE',{weekday:'short',day:'numeric',month:'short'});
+    const today = new Date().toISOString().slice(0, 10);
+    const yest  = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (dateStr === today) return 'Today';
+    if (dateStr === yest)  return 'Yesterday';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-KE', { weekday:'short', day:'numeric', month:'short' });
   };
 
-  // Max total for bar width scaling
-  const maxTotal = history.length ? Math.max(...history.map(d=>d.total), 1) : 1;
+  const maxTotal = history.length ? Math.max(...history.map(d => d.total), 1) : 1;
 
   const rows = history.length
     ? history.map(d => {
-        const barPct = Math.round((d.total/maxTotal)*100);
+        const barPct = Math.round((d.total / maxTotal) * 100);
         return `
-        <div style="background:var(--dark3);border-radius:10px;padding:14px 16px;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-weight:700;font-size:.9rem">${fmtDate(d.date)}</span>
-            <span style="font-family:var(--fh);color:var(--green);font-size:1.05rem;letter-spacing:1px">KES ${d.total.toLocaleString()}</span>
-          </div>
-          <!-- Progress bar -->
-          <div style="height:4px;background:var(--line);border-radius:2px;margin-bottom:8px;overflow:hidden">
-            <div style="height:100%;width:${barPct}%;background:var(--green);border-radius:2px;transition:width .4s"></div>
-          </div>
-          <div style="display:flex;gap:16px;font-size:.75rem;color:var(--muted)">
-            <span>📦 ${d.orders} order${d.orders!==1?'s':''}</span>
-            <span>🍗 Food: KES ${d.food_revenue.toLocaleString()}</span>
-            <span>🏍️ Delivery: KES ${d.delivery_revenue.toLocaleString()}</span>
-          </div>
-        </div>`}).join('')
-    : `<div class="empty" style="padding:30px"><div class="ei">📊</div><p style="font-size:.82rem">No deliveries completed in this period</p></div>`;
+          <div style="background:var(--dark3);border-radius:10px;
+               padding:14px 16px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;
+                 align-items:center;margin-bottom:6px">
+              <span style="font-weight:700;font-size:.9rem">${fmtDate(d.date)}</span>
+              <span style="font-family:var(--fh);color:var(--green);
+                   font-size:1.05rem;letter-spacing:1px">
+                KES ${d.total.toLocaleString()}
+              </span>
+            </div>
+            <div style="height:4px;background:var(--line);border-radius:2px;
+                 margin-bottom:8px;overflow:hidden">
+              <div style="height:100%;width:${barPct}%;background:var(--green);
+                   border-radius:2px;transition:width .4s"></div>
+            </div>
+            <div style="display:flex;gap:16px;font-size:.75rem;color:var(--muted)">
+              <span>📦 ${d.orders} order${d.orders !== 1 ? 's' : ''}</span>
+              <span>🍗 Food: KES ${d.food_revenue.toLocaleString()}</span>
+              <span>🏍️ Delivery: KES ${d.delivery_revenue.toLocaleString()}</span>
+            </div>
+          </div>`;
+      }).join('')
+    : `<div class="empty" style="padding:30px">
+        <div class="ei">📊</div>
+        <p style="font-size:.82rem;margin-bottom:14px">
+          No revenue to display for this period
+        </p>
+        ${clearedAt ? `
+          <button class="btn btn-ghost btn-sm" onclick="resetRevenueHistory()">
+            ↩ Restore Hidden History
+          </button>` : ''}
+      </div>`;
 
   el.innerHTML = `
-    <!-- Header with period selector -->
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+
+    <!-- Header row -->
+    <div style="display:flex;justify-content:space-between;align-items:center;
+         margin-bottom:14px;flex-wrap:wrap;gap:10px">
+
       <div class="a-sec-t" style="margin:0">REVENUE HISTORY</div>
-      <select id="rev-days-sel" class="inp" style="width:auto;padding:8px 12px;font-size:.82rem"
-        onchange="renderAdminRevenue()">
-        <option value="7"  ${days===7 ?'selected':''}>Last 7 days</option>
-        <option value="30" ${days===30?'selected':''}>Last 30 days</option>
-        <option value="90" ${days===90?'selected':''}>Last 90 days</option>
-        <option value="365" ${days===365?'selected':''}>Last year</option>
-      </select>
+
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+
+        <!-- Period selector -->
+        <select id="rev-days-sel" class="inp"
+          style="width:auto;padding:8px 12px;font-size:.82rem"
+          onchange="renderAdminRevenue()">
+          <option value="7"   ${days === 7   ? 'selected' : ''}>Last 7 days</option>
+          <option value="30"  ${days === 30  ? 'selected' : ''}>Last 30 days</option>
+          <option value="90"  ${days === 90  ? 'selected' : ''}>Last 90 days</option>
+          <option value="365" ${days === 365 ? 'selected' : ''}>Last year</option>
+        </select>
+
+        <!-- Clear button -->
+        <button onclick="clearRevenueHistory()"
+          style="background:var(--dark3);border:1px solid var(--line);
+                 color:var(--muted);padding:8px 14px;border-radius:8px;
+                 font-size:.78rem;cursor:pointer;white-space:nowrap">
+          🗑 Clear View
+        </button>
+
+        <!-- Restore button — only shown when history is cleared -->
+        ${clearedAt ? `
+          <button onclick="resetRevenueHistory()"
+            style="background:none;border:1px solid var(--green);
+                   color:var(--green);padding:8px 14px;border-radius:8px;
+                   font-size:.78rem;cursor:pointer;white-space:nowrap">
+            ↩ Restore
+          </button>` : ''}
+
+      </div>
     </div>
 
+    <!-- Cleared notice -->
+    ${clearedAt ? `
+      <div style="background:rgba(255,165,0,.08);border:1px solid var(--orange);
+           border-radius:8px;padding:10px 14px;margin-bottom:14px;
+           font-size:.78rem;color:var(--orange);display:flex;
+           justify-content:space-between;align-items:center">
+        <span>📅 Showing history after ${clearedAt} only</span>
+        <button onclick="resetRevenueHistory()"
+          style="background:none;border:none;color:var(--orange);
+                 font-size:.78rem;cursor:pointer;text-decoration:underline">
+          Show all
+        </button>
+      </div>` : ''}
+
     <!-- Grand total card -->
-    <div style="background:var(--dark2);border:1px solid var(--line2);border-radius:var(--r);padding:18px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+    <div style="background:var(--dark2);border:1px solid var(--line2);
+         border-radius:var(--r);padding:18px 20px;margin-bottom:16px;
+         display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div style="font-size:.75rem;color:var(--muted);letter-spacing:1px;margin-bottom:4px">TOTAL REVENUE · ${days} DAYS</div>
-        <div style="font-family:var(--fh);font-size:2rem;color:var(--green);letter-spacing:2px">KES ${grand_total.toLocaleString()}</div>
+        <div style="font-size:.75rem;color:var(--muted);
+             letter-spacing:1px;margin-bottom:4px">
+          TOTAL REVENUE · ${days} DAYS
+        </div>
+        <div style="font-family:var(--fh);font-size:2rem;
+             color:var(--green);letter-spacing:2px">
+          KES ${grand_total.toLocaleString()}
+        </div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">DAYS WITH ORDERS</div>
-        <div style="font-family:var(--fh);font-size:1.6rem">${history.length}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px">
+          DAYS WITH ORDERS
+        </div>
+        <div style="font-family:var(--fh);font-size:1.6rem">
+          ${history.length}
+        </div>
       </div>
     </div>
 
     <!-- Daily rows -->
     ${rows}
   `;
+}
+
+// Frontend "clear history" — does not delete data, just hides it from view until the next reload
+
+const REVENUE_CLEAR_KEY = 'mb_revenue_cleared_at';
+function clearRevenueHistory() {
+  if (!confirm('Clear revenue history from view? This does not delete any data, but hides all days on or before today to help you focus on recent performance. You can restore the full history at any time.')) return;
+
+  localStorage.setItem(REVENUE_CLEAR_KEY, new Date().toISOString().slice(0, 10)); // e.g. "2025-05-12"  
+  toast('Revenue history cleared from view. Showing only entries after today.', 'ok', 4000);
+  renderAdminRevenue();
+}
+
+// Remove the "clear" filter and show all history again
+function resetRevenueHistory() {
+  localStorage.removeItem(REVENUE_CLEAR_KEY);
+  toast('Full revenue history restored.', 'ok', 3000);
+  renderAdminRevenue();
 }
 
 async function addMenuItem() {
