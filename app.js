@@ -1534,6 +1534,8 @@ async function reverseGeocode(lat, lng){
 function getLocation(){ cPanelLocation(); }
 function initLocMap(){  cPanelLocation(); }
 function recenterOnGPS(){ tryGPS(); }
+
+
 function goToPayment(){
   const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
@@ -1662,7 +1664,7 @@ const mpesaName = document.getElementById('mpesa-name')?.value.trim().toUpperCas
 const amountPaid = parseInt(document.getElementById('mpesa-amount')?.value);
 const orderTotal = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
 
-if(!userLoc){
+if(!userLoc && orderType !== 'pickup'){
   toast('📍 Please confirm your delivery location first','err',4000);
   cPanelLocation(); return;
 }
@@ -1689,10 +1691,12 @@ if(!amountPaid || amountPaid < orderTotal){
   const order=await apiFetch('/api/orders',{method:'POST',body:{
     customer_phone: user.phone,
     customer_name:  user.name,
-    items:orderItems, notes, location:userLoc,
-    customer_lat:   userLoc?.lat,
-    customer_lng:   userLoc?.lng,
-    customer_area:  userLoc?.areaName,
+    items:orderItems, notes, 
+    order_type: orderType,
+    location: orderType === 'pickup' ? null : userLoc,
+    customer_lat:  orderType === 'pickup' ? null : userLoc?.lat,
+    customer_lng:   orderType === 'pickup' ? null : userLoc?.lng,
+    customer_area:  orderType === 'pickup' ? 'KFC Narok (Self-Pickup)' : userLoc?.areaName,
     mpesa_reference:`${mpesaName} · KES ${amountPaid}`
   }});
 
@@ -1724,7 +1728,6 @@ if(!amountPaid || amountPaid < orderTotal){
     // Manual payment flow
     btn.innerHTML = '✅ Confirm Payment';
     btn.disabled = false;
-    enableEnterKey('auth-btn');
     btn.onclick = () => confirmPayment(oid);
     toast('Order placed! Pay via M-Pesa, then click "Confirm Payment" 📱', 'ok', 5000);
     cart = [];
