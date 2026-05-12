@@ -270,16 +270,82 @@ function enableEnterKey(btnId){
     }, 300);
 }
 
-// FORMAT
+// FORMATTERS
+
 const F = {
-    money: a=>`KES ${Number(a).toLocaleString()}`,
-    date: d=>new Date(d).toLocaleString('en-KE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
-    phone: p=>{ const l=p.startsWith('254')?'0'+p.slice(3):p; return l.replace(/(\d{4})(\d{3})(\d{3})/,'$1 $2 $3'); },
-    norm: p=>{ const d=p.replace(/\D/g,''); return d.startsWith('254')?`+${d}`:d.startsWith('0')?`+254${d.slice(1)}`:`+254${d}`; },
-    age: d=>{ const m=Math.floor((Date.now()-new Date(d))/60000); return m<60?`${m}m`:`${Math.floor(m/60)}h`; },
-    status: s=>({pending:'Awaiting payment',awaiting_payment:'Awaiting payment', paid:'Payment confirmed',cooking:'Being prepared',ready:'Ready!',rider_assigned:'Rider on way', picked_up:'Out for delivery',delivered:'Delivered ✓',cancelled:'Cancelled'})[s]||s,
-    badge: s=>({pending:'b-muted', awaiting_payment:'b-muted',paid:'b-blue',cooking:'b-orange',ready:'b-orange',rider_assigned:'b-blue',picked_up:'b-blue',delivered:'b-green',cancelled:'b-red'})[s]||'b-muted',
-    emoji: c=>({'Brand New':'🔥',Streetwise:'🍗','Chicken Pieces':'🍗',Burgers:'🍔',Wraps:'🌯',Sharing:'🍗🍗',Wings:'🍖','Snacks & Sides':'🍟',Drinks:'🥤',Krushers:'🥤',Desserts:'🍦','Kiddie Meals':'🧒'})[c]||'🍽️'
+  money:  a => `KES ${Number(a).toLocaleString()}`,
+
+  date:   d => new Date(d).toLocaleString('en-KE', {
+    day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit'
+  }),
+
+  phone:  p => {
+    const l = p.startsWith('254') ? '0' + p.slice(3) : p;
+    return l.replace(/(\d{4})(\d{3})(\d{3})/, '$1 $2 $3');
+  },
+
+  norm:   p => {
+    const d = p.replace(/\D/g, '');
+    return d.startsWith('254') ? `+${d}`
+         : d.startsWith('0')   ? `+254${d.slice(1)}`
+         :                       `+254${d}`;
+  },
+
+  age:    d => {
+    const m = Math.floor((Date.now() - new Date(d)) / 60000);
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`;
+  },
+
+  status: (s, orderType) => {
+    // ✅ Pickup — no rider steps, uses collection language
+    if (orderType === 'pickup') {
+      return {
+        pending:  'AWAITING PAYMENT',
+        paid:     'PAYMENT CONFIRMED',
+        cooking:  'BEING PREPARED',
+        ready:    'READY FOR PICKUP!',
+        picked_up:'COLLECTED ✓',      // ✅ safe fallback
+        delivered:'COLLECTED ✓',
+      }[s] || s.toUpperCase();
+    }
+
+    // ✅ Delivery — full rider flow
+    return {
+      pending:        'AWAITING PAYMENT',
+      paid:           'PAYMENT CONFIRMED',
+      cooking:        'BEING PREPARED',
+      ready:          'READY FOR DELIVERY!',
+      rider_assigned: 'RIDER ASSIGNED',
+      picked_up:      'OUT FOR DELIVERY',
+      delivered:      'DELIVERED ✓',
+    }[s] || s.toUpperCase();
+  },
+
+  badge: s => ({
+    pending:        'b-muted',
+    paid:           'b-blue',
+    cooking:        'b-orange',
+    ready:          'b-green',   // ✅ green — food is ready
+    rider_assigned: 'b-blue',
+    picked_up:      'b-blue',
+    delivered:      'b-green',
+  })[s] || 'b-muted',
+
+  emoji: c => ({
+    'Brand New':      '🔥',
+    'Streetwise':     '🍗',
+    'Chicken Pieces': '🍗',
+    'Burgers':        '🍔',
+    'Wraps':          '🌯',
+    'Sharing':        '🍗🍗',
+    'Wings':          '🍖',
+    'Snacks & Sides': '🍟',
+    'Drinks':         '🥤',
+    'Krushers':       '🥤',
+    'Desserts':       '🍦',
+    'Kiddie Meals':   '🧒',
+  })[c] || '🍽️',
 };
 
 function screen(id){
@@ -2045,7 +2111,6 @@ function historyRow(o){
 }
 
 async function renderTracking(oid) {
-  // Always hide the cart-float while on tracking screen — no need to view cart once order is placed, and it can cause confusion if it shows old items while waiting for API response
   document.getElementById('cart-float')?.classList.add('hidden');
 
   let o = await apiFetch(`/api/orders/${oid}`);
@@ -2054,107 +2119,290 @@ async function renderTracking(oid) {
       <div class="empty" style="padding-top:60px">
         <div class="ei">📦</div>
         <h3>ORDER NOT FOUND</h3>
-        <p style="font-size:.83rem;color:var(--muted)">Could not load order #${oid}.<br>Check your connection or contact KFC Narok.</p>
-        <button class="btn btn-ghost" style="margin-top:16px" onclick="cPanel('menu')">← Back to Menu</button>
+        <p style="font-size:.83rem;color:var(--muted)">
+          Could not load order #${oid}.<br>
+          Check your connection or contact KFC Narok.
+        </p>
+        <button class="btn btn-ghost" style="margin-top:16px"
+          onclick="cPanel('menu')">← Back to Menu</button>
       </div>`;
     return;
   }
-  
-  const steps = [
-    {lbl:'Order Placed', match:['pending','paid','cooking','ready','rider_assigned','picked_up','delivered']},
-    {lbl:'Cooking',      match:['cooking','ready','rider_assigned','picked_up','delivered']},
-    {lbl:'On way',       match:['picked_up','delivered']},
-    {lbl:'Done',         match:['delivered']},
+
+  const isPickup = o.order_type === 'pickup';
+
+  // ── Steps ──────────────────────────────────────────────────────────────
+  const steps = isPickup ? [
+    {lbl:'Order Placed', ico:'📋', match:['pending','paid','cooking','ready','delivered']},
+    {lbl:'Being Prepared',      ico:'🍗', match:['cooking','ready','delivered']},
+    {lbl:'Ready for pickup',        ico:'✅', match:['ready','delivered']},
+    {lbl:'Collected',    ico:'🏃', match:['delivered']},
+  ] : [
+    {lbl:'Order Placed', ico:'📋', match:['pending','paid','cooking','ready','rider_assigned','picked_up','delivered']},
+    {lbl:'Cooking',      ico:'🍗', match:['cooking','ready','rider_assigned','picked_up','delivered']},
+    {lbl:'On Way',       ico:'🏍️', match:['picked_up','delivered']},
+    {lbl:'Done',         ico:'✅', match:['delivered']},
   ];
-  
+
   const ai = steps.findLastIndex(s => s.match.includes(o.status));
-  
-  // Add rider selection for pending and paid orders (manual payment flow — customer has already paid)
-  const riderSection = (o.status === 'pending' || o.status === 'paid') && !o.rider_name ? `
-    <div class="card" style="margin-top:11px">
-      <div class="card-t">🚴 CHOOSE YOUR RIDER</div>
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Select a rider to deliver your order</p>
-      <div id="rider-list" style="max-height:200px;overflow-y:auto">
-        <div style="text-align:center;padding:20px"><span class="spin"></span> Loading riders...</div>
+
+  // ── ETA text ───────────────────────────────────────────────────────────
+const etaText = o.status === 'delivered'
+  ? (isPickup ? 'Order collected — enjoy your meal! 🍗' : 'Delivered successfully 🎉')
+  : isPickup
+    ? o.status === 'ready'
+      ? '🎉 Ready for pickup! Come to the counter with your order number'
+      : o.status === 'cooking'
+        ? '🍗 Being prepared — Est. 10–15 minutes'
+        : '⏳ Order received — Est. 15–25 minutes'
+    : '🏍️ Out for delivery — Est. 20–40 minutes';
+  // ── Pickup info card ───────────────────────────────────────────────────
+  // ✅ Bug 4 fixed — added padding
+  const pickupInfoCard = isPickup ? `
+    <div style="background:var(--dark3);border-radius:12px;padding:16px;
+         margin-bottom:12px;display:flex;align-items:flex-start;gap:14px">
+      <div style="font-size:2rem;flex-shrink:0">🏪</div>
+      <div>
+        <div style="font-weight:700;font-size:.9rem;color:var(--white);margin-bottom:4px">
+          SELF PICKUP — KFC NAROK
+        </div>
+        <div style="font-size:.8rem;color:var(--muted);line-height:1.5">
+          Come to the counter and show your order number.<br>
+          <strong style="color:var(--white)">${o.order_number}</strong>
+        </div>
       </div>
     </div>
   ` : '';
-  
-  // Show assigned rider info if already assigned
-  const assignedRider = o.rider_name ? `
+
+  // ── Ready card ─────────────────────────────────────────────────────────
+  const readyCard = (isPickup && o.status === 'ready') ? `
+    <div style="background:rgba(46,204,113,0.12);border:2px solid var(--green);
+         border-radius:12px;padding:18px 16px;margin-bottom:12px;text-align:center">
+      <div style="font-size:2.5rem;margin-bottom:8px">🎉</div>
+      <div style="font-family:var(--fh);font-size:1.1rem;color:var(--green);
+           letter-spacing:1px;margin-bottom:6px">YOUR ORDER IS READY!</div>
+      <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px">
+        Please collect from the counter.<br>
+        Show order number
+        <strong style="color:var(--white)">${o.order_number}</strong>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg"
+        onclick="markPickupCollected('${oid}')"
+        style="background:var(--green);color:#000;border-color:var(--green)">
+        ✅ I Have Collected My Order
+      </button>
+    </div>
+  ` : '';
+
+  // ── Collected confirmation card ────────────────────────────────────────
+  // ✅ Bug 1 fixed — styl=e → style
+  const collectedCard = (isPickup && o.status === 'delivered') ? `
+    <div style="background:rgba(46,204,113,0.1);border:1.5px solid var(--green);
+         border-radius:12px;padding:16px;margin-bottom:12px;text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">✅</div>
+      <div style="font-weight:700;color:var(--green);margin-bottom:4px">
+        ORDER COLLECTED!
+      </div>
+      <div style="font-size:.8rem;color:var(--muted)">
+        Enjoy your meal — thank you for choosing KFC Narok 🍗
+      </div>
+    </div>
+  ` : '';
+
+  // ── Delivery only sections ─────────────────────────────────────────────
+  const riderSection = (!isPickup &&
+    (o.status === 'pending' || o.status === 'paid') && !o.rider_name) ? `
+    <div class="card" style="margin-top:11px">
+      <div class="card-t">🚴 CHOOSE YOUR RIDER</div>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">
+        Select a rider to deliver your order
+      </p>
+      <div id="rider-list" style="max-height:200px;overflow-y:auto">
+        <div style="text-align:center;padding:20px">
+          <span class="spin"></span> Loading riders...
+        </div>
+      </div>
+    </div>
+  ` : '';
+
+  const assignedRider = (!isPickup && o.rider_name) ? `
     <div class="card" style="margin-top:11px;background:var(--dark2)">
       <div class="card-t">🏍️ RIDER ASSIGNED</div>
       <div style="display:flex;align-items:center;gap:12px;padding:8px 0">
         <div style="font-size:2rem">🏍️</div>
         <div>
           <div style="font-weight:600">${o.rider_name}</div>
-          <div style="font-size:.8rem;color:var(--muted)">⭐ ${o.rider_rating || 'New'} · On the way</div>
+          <div style="font-size:.8rem;color:var(--muted)">
+            ⭐ ${o.rider_rating || 'New'} · On the way
+          </div>
         </div>
       </div>
       ${o.status !== 'delivered' ? `
-        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px"
+          onclick="openChat(${o.id},'customer')">💬 Chat with Rider</button>
       ` : ''}
     </div>
   ` : '';
 
+  const mapSection = !isPickup ? `
+    ${o.rider_lat ? `
+      <div class="map-ph">
+        <span style="position:relative;z-index:1;font-size:.85rem;color:var(--muted2)">
+          Rider location
+        </span>
+        <a class="map-link"
+          href="https://maps.google.com/?q=${o.rider_lat},${o.rider_lng}"
+          target="_blank">📍 Open Map</a>
+      </div>
+    ` : `
+      <div class="map-ph">
+        <span style="position:relative;z-index:1;font-size:.8rem;color:var(--muted)">
+          Map updates when rider is assigned
+        </span>
+      </div>
+    `}
+  ` : '';
+
+  const pinReminder = !isPickup ? `
+    <div class="card" style="margin-top:11px;text-align:center;
+         font-size:.81rem;color:var(--muted)">
+      🔐 Delivery PIN sent to your phone via SMS<br>
+      <span style="font-size:.73rem">
+        Share it with your rider
+        <strong style="color:var(--white)">only after</strong> receiving your food
+      </span>
+    </div>
+  ` : '';
+
+  // ── Rating card ────────────────────────────────────────────────────────
+  // ✅ Bug 5 fixed — unified rating system using setRating() + submitRating()
+  const ratingCard = o.status === 'delivered' ? `
+    <div class="card" style="margin-top:11px" id="rating-card">
+      <div class="card-t">RATE YOUR EXPERIENCE</div>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
+        Food quality:
+      </p>
+      <div class="stars" id="food-stars">
+        ${[1,2,3,4,5].map(n =>
+          `<span class="star" onclick="setRating('food',${n})">⭐</span>`
+        ).join('')}
+      </div>
+      ${!isPickup ? `
+        <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">
+          Rider service:
+        </p>
+        <div class="stars" id="rider-stars">
+          ${[1,2,3,4,5].map(n =>
+            `<span class="star" onclick="setRating('rider',${n})">⭐</span>`
+          ).join('')}
+        </div>
+      ` : ''}
+      <button class="btn btn-primary btn-full" style="margin-top:14px"
+        onclick="submitRating()">
+        Submit Rating
+      </button>
+    </div>
+  ` : '';
+
+  // ── Render HTML ────────────────────────────────────────────────────────
   document.getElementById('track-body').innerHTML = `
+
     <div class="trk-hdr">
       <div class="trk-no">Order ${o.order_number}</div>
-      <div class="trk-st">${F.status(o.status)}</div>
-      <div class="trk-eta">${o.status==='delivered'?'Delivered successfully':'Est. 20-40 minutes'}</div>
+      <div style="display:flex;align-items:center;gap:8px;
+           justify-content:center;margin-top:4px">
+
+        ${isPickup
+          // ✅ Bug 2 & 3 fixed — quoted style, correct color
+          ? `<span style="background:var(--green);color:#000;font-size:.65rem;
+                font-weight:800;padding:2px 8px;border-radius:4px;
+                letter-spacing:1px">SELF PICKUP</span>`
+          : `<span style="background:var(--red);color:#fff;font-size:.65rem;
+                font-weight:800;padding:2px 8px;border-radius:4px;
+                letter-spacing:1px">DELIVERY</span>`
+        }
+
+        <div class="trk-st">${F.status(o.status, isPickup ? 'pickup' : 'delivery')}</div>
+      </div>
+      <div class="trk-eta" style="margin-top:6px">${etaText}</div>
     </div>
+
     <div class="prog">
       ${steps.map((s,i) => `
         <div class="ps ${i<ai?'done':''} ${i===ai?'act':''}">
-          <div class="pd">${i<ai?'✓':s.lbl[0]}</div>
+          <div class="pd">${i<ai?'✓':s.ico}</div>
           <div class="pl">${s.lbl}</div>
         </div>
-        ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<ai?'var(--green)':'var(--line2)'};margin-bottom:20px"></div>`:''}`).join('')}
+        ${i<steps.length-1 ? `
+          <div style="flex:1;height:2px;
+            background:${i<ai?'var(--green)':'var(--line2)'};
+            margin-bottom:20px">
+          </div>` : ''}
+      `).join('')}
     </div>
+
     <div style="padding:0 16px 16px;max-width:500px;margin:0 auto">
-      ${o.rider_lat ? `
-        <div class="map-ph">
-          <span style="position:relative;z-index:1;font-size:.85rem;color:var(--muted2)">Rider location</span>
-          <a class="map-link" href="https://maps.google.com/?q=${o.rider_lat},${o.rider_lng}" target="_blank">📍 Open Map</a>
-        </div>
-      ` : `
-        <div class="map-ph">
-          <span style="position:relative;z-index:1;font-size:.8rem;color:var(--muted)">Map updates when rider is assigned</span>
-        </div>
-      `}
+      ${pickupInfoCard}
+      ${readyCard}
+      ${collectedCard}
+      ${mapSection}
       ${riderSection}
       ${assignedRider}
+
       <div class="card">
         <div class="card-t">ORDER SUMMARY</div>
         ${(o.items||[]).map(i => `
-          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem">
-            <span>${i.name}${i.chickenType ? ` <span style="background:var(--red);color:#fff;font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px">${i.chickenType}</span>` : ''}${i.note ? ` <span style="color:var(--orange);font-size:.73rem">(${i.note})</span>` : ''}</span>
-            <span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">${F.money(i.price)}</span>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;
+               border-bottom:1px solid var(--line);font-size:.87rem">
+            <span>
+              ${i.name}
+              ${i.chickenType ? `
+                <span style="background:var(--red);color:#fff;font-size:.62rem;
+                     font-weight:700;padding:1px 5px;border-radius:3px;
+                     margin-left:4px">${i.chickenType}</span>` : ''}
+              ${i.note ? `
+                <span style="color:var(--orange);font-size:.73rem">
+                  (${i.note})
+                </span>` : ''}
+            </span>
+            <span style="font-family:var(--fh);color:var(--red);letter-spacing:1px">
+              ${F.money(i.price)}
+            </span>
           </div>
         `).join('')}
       </div>
+
+      ${pinReminder}
+      ${ratingCard}
     </div>
-    <div class="card" style="margin-top:11px;text-align:center;font-size:.81rem;color:var(--muted)">
-      🔐 Delivery PIN sent to your phone via SMS<br>
-      <span style="font-size:.73rem">Share it with your rider <strong style="color:var(--white)">only after</strong> receiving your food</span>
-    </div>
-    ${o.status === 'delivered' ? `
-      <div class="card" style="margin-top:11px" id="rating-card">
-        <div class="card-t">RATE YOUR ORDER</div>
-        <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Food quality:</p>
-        <div class="stars" id="food-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('food',${n})">⭐</span>`).join('')}</div>
-        <p style="font-size:.8rem;color:var(--muted);margin:12px 0 8px">Rider service:</p>
-        <div class="stars" id="rider-stars">${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('rider',${n})">⭐</span>`).join('')}</div>
-        <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="submitRating()">Submit Rating</button>
-      </div>
-    ` : ''}
   `;
-  
-  // Load available riders if order is pending or paid (before rider is assigned)
-  if ((o.status === 'pending' || o.status === 'paid') && !o.rider_name) {
-    loadAvailableRiders(oid);
+
+  // ✅ Bug 6 fixed — closing brace was missing
+  if (!isPickup && (o.status === 'pending' || o.status === 'paid') && !o.rider_name) {
+    loadAvailableRiders(o.id);
+  }
+} // ← closes renderTracking()
+
+
+// ── PICKUP COLLECTED ──────────────────────────────────────────────────────────
+async function markPickupCollected(oid) {
+  const btn = document.querySelector(`[onclick="markPickupCollected('${oid}')"]`);
+  if (btn) { btn.innerHTML = '<span class="spin"></span> Confirming...'; btn.disabled = true; }
+
+  const res = await apiFetch(`/api/orders/${oid}/collected`, { method: 'POST' });
+
+  if (res?.success) {
+    toast('✅ Order collected — enjoy your meal! 🍗', 'ok', 5000);
+    renderTracking(oid);
+  } else {
+    toast(res?.error || 'Failed to confirm collection — try again', 'err', 4000);
+    if (btn) { btn.innerHTML = '✅ I Have Collected My Order'; btn.disabled = false; }
   }
 }
+
+
+
+
 // Load available riders and display them
 async function loadAvailableRiders(orderId) {
   const list = document.getElementById('rider-list');
@@ -2902,7 +3150,7 @@ function kCard(o,type){
   const baseTime = o.paid_at || o.created_at;
   const ageMins = Math.floor((Date.now()-new Date(baseTime))/60000);
   const urgent = ageMins>15 && type!=='rdy';
-  const isPickup = o.order_type === 'pickup';
+  const isPickup = o.order_type === 'pickup' || o.customer_area === 'KFC Narok (self-pickup)';
   const typePill = isPickup
     ? `<span style="background:#1a7a1a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🚶 SELF-PICKUP</span>`
     : `<span style="background:#1a3a7a;color:#fff;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle">🛵 DELIVERY</span>`;
