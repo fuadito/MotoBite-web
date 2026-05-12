@@ -265,24 +265,72 @@
 
 <!--ADMIN SECTION-->
 <section id="s-admin" class="screen">
-    <div class="app-shell">
-        <header class="topbar"><div class="topbar-in"><div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">ADMIN</span></div><div class="tb-right"><span class="badge b-muted">Admin</span><button class="exit-btn" onclick="adminSignOut()">Sign Out</button></div></div></header> 
-        <main>
-           <nav class="a-tabs">
-            <button class="a-tab on" onclick="aTab('overview',this)">Overview</button>
-            <button class="a-tab" onclick="aTab('orders',this)">Orders</button>
-            <button class="a-tab" onclick="aTab('riders',this)">Riders</button>
-            <button class="a-tab" onclick="aTab('menu',this)">Menu</button>
-        </nav> 
-        <article id="ap-overview" class="sp on">
-            <div class="a-metrics" id="a-metrics"></div>
-            <section class="a-sec"><div class="asec-t">RECENT ORDERS <button class="btn btn-ghost btn-sm" onclick="aTab('orders',null)">View All →</button></div><div id="a-recent"></div></section>
-        </article>
-        <article id="ap-orders" class="sp"><section class="a-sec"><div id="a-orders"></div></section></article>
-        <article id="ap-riders" class="sp"><section class="a-sec"><div class="a-sec-t">PENDING APPROVAL</div><div id="a-riders"></div></section></article>
-        <article id="ap-menu" class="sp"><section class="a-sec"><div class="a-sec-t">MENU ITEMS</div><div id="a-menu"></div></section></article>
-        </main>    
-    </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-in">
+        <div class="tb-logo">
+          <div class="tb-mark">KFC</div>
+          <span class="tb-title">ADMIN</span>
+        </div>
+        <div class="tb-right">
+          <span class="badge b-muted">Admin</span>
+          <button class="exit-btn" onclick="adminSignOut()">Sign Out</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <nav class="a-tabs">
+        <button class="a-tab on"  onclick="aTab('overview',this)">Overview</button>
+        <button class="a-tab"     onclick="aTab('orders',this)">Orders</button>
+        <button class="a-tab"     onclick="aTab('riders',this)">Riders</button>
+        <button class="a-tab"     onclick="aTab('menu',this)">Menu</button>
+        <button class="a-tab"     onclick="aTab('revenue',this)">Revenue</button>
+        <!-- ✅ Revenue tab added -->
+      </nav>
+
+      <article id="ap-overview" class="sp on">
+        <div class="a-metrics" id="a-metrics"></div>
+        <section class="a-sec">
+          <div class="asec-t">
+            RECENT ORDERS
+            <button class="btn btn-ghost btn-sm"
+              onclick="aTab('orders',null)">View All →</button>
+          </div>
+          <div id="a-recent"></div>
+        </section>
+      </article>
+
+      <article id="ap-orders" class="sp">
+        <section class="a-sec">
+          <div id="a-orders"></div>
+        </section>
+      </article>
+
+      <article id="ap-riders" class="sp">
+        <section class="a-sec">
+          <div class="a-sec-t">PENDING APPROVAL</div>
+          <div id="a-riders"></div>
+        </section>
+      </article>
+
+      <article id="ap-menu" class="sp">
+        <section class="a-sec">
+          <div class="a-sec-t">MENU ITEMS</div>
+          <div id="a-menu"></div>
+        </section>
+      </article>
+
+      <!-- ✅ Revenue panel added -->
+      <article id="ap-revenue" class="sp">
+        <section class="a-sec">
+          <div id="a-revenue"></div>
+          <!-- renderAdminRevenue() writes its own header inside #a-revenue -->
+        </section>
+      </article>
+
+    </main>
+  </div>
 </section>
 <!--ADMIN LOGIN SCREEN-->
 <section id="s-admin-login" class="screen">
