@@ -3232,83 +3232,159 @@ async function unsuspendRider(phone, name) {
 
 
 async function renderAdminMenu() {
-    const data=await apiFetch('/api/menu');
-    // Normalize menu items - always have id, category, and available properties for consistent rendering and toggling
-  const items = data
-  ? Object.entries(data).flatMap(([c,catItems])=>
-  (catItems || []).map(i=>({ ...i, category: i.category || cat })))
-  : Object.entries(MENU).flatMap(([cat,items])=> catItems.map(i=>({ ...i, category: cat, available: true })));
+  const el = document.getElementById('a-menu');
+  if (!el) return;
 
-  // Group items by category for the dropdown and rendering
+  // ── Loading state ──────────────────────────────────────────────────────
+  el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">
+    <div class="spin" style="margin:0 auto 12px"></div>
+    Loading menu...
+  </div>`;
+
+  const data = await apiFetch('/api/menu?all=true'); // FIX: fetch all items with categories in one go, instead of multiple calls per category
+
+  // ── Normalize items ────────────────────────────────────────────────────
+  // API returns { "Category Name": [items] }
+  const items = data
+    ? Object.entries(data).flatMap(([cat, catItems]) =>       // ✅ 'cat' matches usage below
+        (catItems || []).map(i => ({ ...i, category: i.category || cat }))
+      )
+    : Object.entries(MENU).flatMap(([cat, catItems]) =>       // ✅ 'catItems' matches usage below
+        catItems.map(i => ({ ...i, category: cat, available: true }))
+      );
+
+  // ── Debug: log what we got ────────────────────────────────────────────
+  console.log('Menu data from API:', data);
+  console.log('Normalized items:', items);
+
+  if (!items || items.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">
+      No menu items found. Add your first item below.
+    </div>`;
+    return;
+  }
+
+  // ── Group by category ──────────────────────────────────────────────────
   const byCategory = {};
   items.forEach(item => {
     const cat = item.category || 'Other';
-    if(!byCategory[cat]) byCategory[cat] = [];
-    byCategory[cat].push(item); 
-  })
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(item);
+  });
 
-  // build the HTML with an add-item form at the top, followed by the list of items with toggles and delete buttons
-  const el = document.getElementById('admin-menu-list');
-  if(!el) return;
+  console.log('Grouped by category:', Object.keys(byCategory));
+
+  // ── Render ─────────────────────────────────────────────────────────────
   el.innerHTML =
-    // ADD NEW MENU ITEM
-       `<div class="card" style="margin-bottom:20px">
-        <div class="card-t">ADD NEW ITEM</div>
-        <div class="field" style="margin-bottom:8px">
-            <label class="field-lbl">Name</label>
-            <input class="inp" id="new-item-name" placeholder="e.g. Spicy Twister"/>
-        </div>
-        <div class="field" style="margin-bottom:8px">
-            <label class="field-lbl">Category</label>
-            <select class="inp" id="new-item-cat">
-               ${['Brand New', ...Object.keys(MENU).filter(c => c !== 'Brand New')]
-  .map(c=>`<option value="${c}">${c}</option>`).join('')}
-            </select>
-        </div>
-        <div class="field" style="margin-bottom:8px">
-            <label class="field-lbl">Price (KES)</label>
-            <input class="inp" id="new-item-price" type="number" placeholder="e.g. 650"/>
-        </div>
-        <div class="field" style="margin-bottom:8px">
-            <label class="field-lbl">Description</label>
-            <input class="inp" id="new-item-desc" placeholder="e.g. Crispy chicken in tortilla wrap"/>
-        </div>
-        <div class="field" style="margin-bottom:12px">
-            <label class="field-lbl">Image URL (optional)</label>
-            <input class="inp" id="new-item-img" placeholder="https://..."/>
-        </div>
-        <div class="field" style="margin-bottom:14px">
-            <label class="field-lbl">Position in Category</label>
-            <input class="inp" id="new-item-order" type="number" placeholder="e.g. 3 — leave blank to add at end" min="1"/>
-            <div style="font-size:.74rem;color:var(--muted);margin-top:4px">Lower number = appears higher in the list</div>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="addMenuItem()">+ Add to Menu</button>
-    </div>`
 
-// Items grouped by category
-  + Object.entries(byCategory).map(([cat,catItems])=>`
-  <div style="margin-bottom:22px">
+    // ADD NEW ITEM FORM
+    `<div class="card" style="margin-bottom:20px">
+      <div class="card-t">ADD NEW ITEM</div>
 
-  <!-- Category header -->
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-family:var(--fh);font-size:.72rem;letter-spacing:1.5px;color:var(--muted);border-radius:8px;padding:7px 12px;background:var(--dark3"><span>${cat.toUpperCase()}</span><span style="color:var(--orange)">${catItems.length} item${catItems.length!==1?'s':''}</span></div>
-
-  <!-- Items in category -->
-  ${catItems.map(item=>`
-    <div class="menu-toggle-item" id="mti-${item.id}">
-      <div class="mt-info">
-        <div class="mt-name">${item.name}</div>
-        <div class="mt-cat" style="font-size:.72rem;color:var(--muted);margin-top:2px">${item.description || ''}</div>
+      <div class="field" style="margin-bottom:8px">
+        <label class="field-lbl">Name</label>
+        <input class="inp" id="new-item-name" placeholder="e.g. Spicy Twister"/>
       </div>
 
-      <div class="mt-price">${F.money(item.price)}</div>
-      <div class="toggle-sm${item.available?' on':''}" id="mt-${item.id}" onclick="toggleMenuItem(${item.id},this)" title="${item.available?'Available - click to hide':'Hidden - click to show'}"></div>
+      <div class="field" style="margin-bottom:8px">
+        <label class="field-lbl">Category</label>
+        <select class="inp" id="new-item-cat">
+          ${['Brand New', ...Object.keys(MENU).filter(c => c !== 'Brand New')]
+            .map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
 
-      <button onclick="deleteMenuItem(${item.id},'${item.name.replace(/'/g,"\\'")}',this)"
-        style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:4px 6px;opacity:.6;line-height:1;flex-shrink:0"
-        title="Delete ${item.name}">🗑️</button>
-    </div>`).join('')}
-  </div>`).join('');
+      <div class="field" style="margin-bottom:8px">
+        <label class="field-lbl">Price (KES)</label>
+        <input class="inp" id="new-item-price" type="number" placeholder="e.g. 650"/>
+      </div>
 
+      <div class="field" style="margin-bottom:8px">
+        <label class="field-lbl">Description</label>
+        <input class="inp" id="new-item-desc"
+          placeholder="e.g. Crispy chicken in tortilla wrap"/>
+      </div>
+
+      <div class="field" style="margin-bottom:8px">
+        <label class="field-lbl">Image URL (optional)</label>
+        <input class="inp" id="new-item-img" placeholder="https://..."/>
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <label class="field-lbl">Position in Category</label>
+        <input class="inp" id="new-item-order" type="number" min="1"
+          placeholder="e.g. 3 — leave blank to add at end"/>
+        <div style="font-size:.74rem;color:var(--muted);margin-top:4px">
+          Lower number = appears higher in the list
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="addMenuItem()">
+        + Add to Menu
+      </button>
+    </div>`
+
+    // ITEMS GROUPED BY CATEGORY
+    + Object.entries(byCategory).map(([cat, catItems]) => `
+
+      <div style="margin-bottom:22px">
+
+        <!-- Category header -->
+        <div style="
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          margin-bottom:8px;
+          font-family:var(--fh);
+          font-size:.72rem;
+          letter-spacing:1.5px;
+          color:var(--muted);
+          border-radius:8px;
+          padding:7px 12px;
+          background:var(--dark3)">
+          <span>${cat.toUpperCase()}</span>
+          <span style="color:var(--orange)">
+            ${catItems.length} item${catItems.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <!-- Items -->
+        ${catItems.map(item => `
+          <div class="menu-toggle-item" id="mti-${item.id}">
+
+            <div class="mt-info">
+              <div class="mt-name">${item.name}</div>
+              <div class="mt-cat"
+                style="font-size:.72rem;color:var(--muted);margin-top:2px">
+                ${item.description || ''}
+              </div>
+            </div>
+
+            <div class="mt-price">${F.money(item.price)}</div>
+
+            <div class="toggle-sm${item.available ? ' on' : ''}"
+              id="mt-${item.id}"
+              onclick="toggleMenuItem(${item.id}, this)"
+              title="${item.available
+                ? 'Available — click to hide'
+                : 'Hidden — click to show'}">
+            </div>
+
+            <button
+              onclick="deleteMenuItem(${item.id},
+                '${item.name.replace(/'/g, "\\'")}', this)"
+              style="background:none;border:none;cursor:pointer;
+                     font-size:1.1rem;padding:4px 6px;
+                     opacity:.6;line-height:1;flex-shrink:0"
+              title="Delete ${item.name}">
+              🗑️
+            </button>
+
+          </div>
+        `).join('')}
+
+      </div>
+    `).join('');
 }
 // ── ADMIN REVENUE HISTORY ─────────────────────────────────────────────────────
 // Separate tab — does not touch or replace today's metrics on Overview.
