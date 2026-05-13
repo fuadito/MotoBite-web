@@ -889,13 +889,10 @@ async function launchCustomer(){
     document.getElementById('c-greet').textContent=`${h<12?'Good morning':h<17?'Good afternoon':'Good evening'}, ${user.name}!`;
     // Fetch menu from backend, fall back to hardcoded MENU if offline
     const data = await apiFetch('/api/menu');
-    if(data && Object.keys(data).length){
-      // Replace each category's items directly — preserves sort_order from DB
-      // Object.assign is NOT used because numeric-keyed arrays get reordered by JS
-      Object.keys(data).forEach(cat => {
-        MENU[cat] = data[cat];
-      });
-    }
+if(data && Object.keys(data).length){
+  Object.keys(MENU).forEach(k => delete MENU[k]); // ← wipe hardcoded MENU first
+  Object.keys(data).forEach(cat => { MENU[cat] = data[cat]; });
+}
 
     renderCats(); renderMenu('Brand New'); updateCartUI();
 
