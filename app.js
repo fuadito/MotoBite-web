@@ -892,9 +892,28 @@ async function launchCustomer(){
 if(data && Object.keys(data).length){
   Object.keys(MENU).forEach(k => delete MENU[k]); // ← wipe hardcoded MENU first
   Object.keys(data).forEach(cat => { MENU[cat] = data[cat]; });
+
+  localStorage.setItem('mb_menu_cache', JSON.stringify({
+    data,
+    timestamp: Date.now()
+  }));
+} else {
+  // Try to load from cache if fetch fails
+  const cached = localStorage.getItem('mb_menu_cache');
+  if(cached){
+    try {
+      const { data, timestamp } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      if(age < 24 * 60 * 60 * 1000){ // cache valid for 24 hours
+        Object.keys(MENU).forEach(k => delete MENU[k]); // ← wipe hardcoded MENU first
+        Object.keys(data).forEach(cat => { MENU[cat] = data[cat]; });
+        toast('Loaded menu from cache (offline mode) 🛠️','warn',5000);
+      } 
+    } catch {}
+  } 
 }
 
-    renderCats(); renderMenu('Brand New'); updateCartUI();
+    renderCats(); renderMenu(); updateCartUI();
 
     // Restore active order on login
       const savedOid = localStorage.getItem('mb_active_order');
@@ -915,6 +934,7 @@ if(data && Object.keys(data).length){
         setTimeout(() => openChat(intent.orderId, intent.role || 'customer'), 400);
       }
     }
+  
 }
 
 
@@ -1598,6 +1618,16 @@ function getLocation(){ cPanelLocation(); }
 function initLocMap(){  cPanelLocation(); }
 function recenterOnGPS(){ tryGPS(); }
 
+
+function escapeHtml(text) {
+  if(!text) return '';
+  return text 
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 function goToPayment(){
   const total = cart.reduce((s,i)=>s+i.price+Object.values(i.addOns||{}).reduce((a,x)=>a+x.price,0),0);
@@ -2950,7 +2980,7 @@ function renderRiderDelivery(){
       <div class="receipt">
         <div class="receipt-hdr">🧾 KFC NAROK COLLECTION RECEIPT</div>
         <div>Order: <strong>${o.order_number}</strong></div>
-         ${(o.items||[]).map(i=>`<div>• ${i.name}${i.chickenType?` <strong style="color:var(--red)">[${i.chickenType}]</strong>`:''}${i.note?` <span style="color:var(--orange)">(${i.note})</span>`:''}</div>`).join('')}
+         ${(o.items||[]).map(i=>`<div>• ${i.name}${i.chickenType?` <strong style="color:var(--red)">[${i.chickenType}]</strong>`:''}${i.note?` <span style="color:var(--orange)">(${escapeHtml(i.note)})</span>`:''}</div>`).join('')}
         <div class="receipt-note">Show this screen to KFC staff at the counter</div>
       </div>
       <div style="background:var(--dark3);border-radius:var(--r);padding:12px;margin-bottom:12px;font-size:.85rem">
@@ -3156,11 +3186,33 @@ async function clearEarningsHistory(){
 function startLocTracking(){
   if(!navigator.geolocation) return;
   if(_locInterval) clearInterval(_locInterval); // FIX: clear existing interval before creating new one
-  _locInterval = setInterval(()=>{
-    navigator.geolocation.getCurrentPosition(p=>{
-      apiFetch('/api/rider/location',{method:'POST',body:{lat:p.coords.latitude,lng:p.coords.longitude}});
-    });
-  },60000);
+ 
+  // adapting the tracking interval based on rider's online status and active order
+  const interval = riderState.activeOrder ? 30000 : 300000; //30s when active order, 5min otherwise
+  _locInterval = setInterval(() => {
+    // only track if rider is online and has an active order (optional: could track more frequently when active order)
+    if (!riderState.online && !riderState.activeOrder) return; // don't track if offline
+    navigator.geolocation.getCurrentPosition(pos => {
+      apiFetch('/api/rider/location', {
+        method: 'POST',
+        body: {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }, err => console.warn('GPS error:', err), { enableHighAccuracy: !!riderState.activeOrder } // high accuracy when active order, otherwise save battery
+      );
+  }, interval);
+
+  // call when state changes to adjust tracking frequency immediately
+  function toggleOnline(){
+    riderState.online=!riderState.online;
+    // restart tracking with new interval immediately on status change
+    startLocTracking();
+  }
+
 }
 
 
@@ -3337,12 +3389,22 @@ async function renderAdminOverview() {
     : '<div class="empty"><div class="ei">📦</div><h3>NO RECENT ORDERS</h3></div>';
 }
 
-async function renderAdminOrders(){
-  const data=await apiFetch('/api/admin/orders');
-  const orders=data?.orders||DEMO_ORDERS_A;
+async function renderAdminOrders(page=1) {
+  const data=await apiFetch(`/api/admin/orders?page=${page}&limit=20`);
+
+  if(data.pagination?.totalPages > 1){
+  document.getElementById('a-orders').innerHTML +=`
+  <div style=display:flex;justify-content:center;gap:8px;margin-top:16px>
+  <button ${!data.pagination?.hasPrev ? 'disabled' : ''} onclick="renderAdminOrders(${page-1})" class="btn btn-ghost">← Prev</button>
+  <span>Page ${page} of ${data.pagination.totalPages}</span>
+  <button ${!data.pagination?.hasNext ? 'disabled' : ''} onclick="renderAdminOrders(${page+1})" class="btn btn-ghost">Next →</button>
+  </div>`;
+  }
+
+  const orders=data.orders||[];
   document.getElementById('a-orders').innerHTML=orders.length
-    ?orders.map(o=>orderRow(o)).join('')
-    :'<div class="empty"><div class="ei">📦</div><h3>NO ORDERS</h3></div>';
+    ? orders.map(o=>orderRow(o)).join('')
+    : '<div class="empty"><div class="ei">📦</div><h3>NO ORDERS FOUND</h3></div>';
 }
 
 
