@@ -1,155 +1,207 @@
-# 🍗 KFC Narok Delivery Platform
+# 🍗 MotoBite — KFC Narok Food Delivery Platform
 
-A modern **food delivery web application** built to simulate the operations of a **KFC Narok branch**, allowing customers to place orders, kitchen staff to manage food preparation, and riders to deliver orders efficiently.
+A modern, multi-role food delivery web application built for **KFC Narok**. MotoBite connects customers, kitchen staff, delivery riders, and admins in a single seamless platform with real-time order tracking and a Progressive Web App (PWA) experience.
 
-This project demonstrates a **multi-role food delivery workflow** built with **HTML, CSS, and JavaScript**, integrated with authentication and backend APIs.
-
----
-
-## 🚀 Live Demo
-
-h
+**Live Demo:** [moto-bite-web.vercel.app](https://moto-bite-web.vercel.app)
 
 ---
 
-## 📂 GitHub Repository
+## 📱 Multi-Role Architecture
 
-https://github.com/fuadito/kfc-narok-frontend
+MotoBite uses a **clean, multi-entry point architecture** — each role gets its own dedicated app with a unique URL, optimized for real-world workflows.
 
----
+| Role | Route | Entry File | Purpose |
+|------|-------|------------|---------|
+| 🛒 **Customer** | `/` | `index.html` + `customer.js` | Browse menu, place orders, track status, view history |
+| 👨‍💼 **Admin** | `/admin` | `admin.html` + `admin.js` | Manage users, orders, analytics, and real-time updates |
+| 👨‍🍳 **Kitchen** | `/kitchen` | `kitchen.html` + `kitchen.js` | Receive orders, manage preparation, mark items ready |
+| 🛵 **Rider** | `/rider` | `rider.html` + `rider.js` | Accept deliveries, manage queue, track completed trips |
 
-# 📌 Features
-
-## 👤 Customer
-
-* Browse the KFC menu
-* Add food items to cart
-* Place orders
-* Track order status
-* View order history
-
-## 👨‍🍳 Kitchen Staff
-
-* Receive incoming orders
-* Manage food preparation
-* Update order status to **Ready**
-
-## 🛵 Rider
-
-* Accept delivery orders
-* View delivery queue
-* Track completed deliveries
-
-## 🌐 Platform Features
-
-* Multi-role login system
-* Real-time order workflow simulation
-* Clean and responsive user interface
-* Toast notifications for actions
-* KFC-themed UI design
+All roles share a unified design system via `core.js` and `style.css`, ensuring a consistent KFC-branded experience.
 
 ---
 
-# 🛠️ Technologies Used
+## 🚀 Features
 
-### Frontend
+### Customer
+- Browse the full KFC Narok menu with categories
+- Add items to cart and customize orders
+- Secure checkout with order confirmation
+- Real-time order status tracking (Pending → Preparing → Ready → Out for Delivery → Delivered)
+- View complete order history
+- PWA install support for mobile app-like experience
 
-* HTML5
-* CSS3
-* JavaScript (Vanilla JS)
+### Admin
+- Real-time dashboard with live order counts
+- Manage all orders across the platform
+- User management and role assignments
+- Analytics and reporting overview
+- Instant notifications for new orders
 
-### Backend Integration
+### Kitchen Staff
+- Dedicated incoming order queue
+- One-tap status updates (Accept → Preparing → Ready)
+- Badge notifications for new orders
+- Clear order details with item breakdowns
 
-* Supabase Authentication
-* REST API
+### Rider
+- Delivery assignment queue
+- Accept or decline delivery jobs
+- Track active deliveries
+- Completed delivery history with timestamps
 
-### Deployment
-
-* GitHub
-* Netlify
+### Platform-Wide
+- **Multi-role authentication** via Supabase Auth
+- **Real-time updates** powered by Supabase realtime channels
+- **Toast notifications** for all critical actions
+- **Responsive design** — works on mobile, tablet, and desktop
+- **Service Worker** for offline caching and faster reloads
+- **Clean URLs** — no `.html` extensions (e.g., `/rider`, `/kitchen`)
 
 ---
 
-# 📁 Project Structure
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Vanilla HTML5, CSS3, JavaScript (ES6+) |
+| **State & Logic** | `core.js` (shared utilities, auth, API helpers) |
+| **Backend** | REST API + Supabase (Authentication & Database) |
+| **API Proxy** | Vercel Rewrites → `https://motobite-api.onrender.com` |
+| **PWA** | Service Worker (`sw.js`), Web App Manifest |
+| **Deployment** | Vercel (Static Hosting + Serverless Rewrites) |
+
+---
+
+## 📁 Project Structure
 
 ```
-kfc-narok-frontend
+MotoBite-web/
 │
-├── index.html      # Main application interface
-├── style.css       # Styling and UI design
-├── app.js          # Application logic
-└── README.md       # Project documentation
+├── index.html              # 🛒 Customer app entry point
+├── customer.js             # Customer-specific logic
+│
+├── admin.html              # 👨‍💼 Admin app entry point
+├── admin.js                # Admin dashboard logic
+│
+├── kitchen.html            # 👨‍🍳 Kitchen app entry point
+├── kitchen.js              # Kitchen order management logic
+│
+├── rider.html              # 🛵 Rider app entry point
+├── rider.js                # Rider delivery queue logic
+│
+├── core.js                 # 🔧 Shared utilities, auth, API client, helpers
+├── style.css               # 🎨 Global styles and KFC theme
+├── sw.js                   # ⚡ Service Worker for PWA caching
+│
+├── vercel.json             # 🔀 URL rewrites, API proxy, headers
+├── site.webmanifest        # 📲 PWA manifest
+│
+├── public/                 # Static assets (if any)
+├── favicon.ico             # Brand icons
+├── favicon.svg
+├── favicon-96x96.png
+├── apple-touch-icon.png
+├── web-app-manifest-192x192.png
+├── web-app-manifest-512x512.png
+│
+├── README.md               # 📄 This file
+└── vercel/                 # Vercel CLI metadata (auto-generated)
 ```
 
 ---
 
-# ⚙️ Installation & Setup
+## 🔌 API Configuration
+
+The app automatically routes API calls through Vercel's serverless edge:
+
+```
+Production API  →  https://motobite-api.onrender.com
+Local Proxy     →  /api/*  (rewritten by Vercel to production API)
+```
+
+This setup avoids CORS issues and keeps the frontend completely static while securely proxying requests to the backend.
+
+---
+
+## ⚙️ Installation & Local Development
 
 ### 1. Clone the repository
-
-```
-git clone https://github.com/fuadito/kfc-narok-frontend.git
-```
-
-### 2. Navigate into the project folder
-
-```
-cd kfc-narok-frontend
+```bash
+git clone https://github.com/fuadito/MotoBite-web.git
+cd MotoBite-web
 ```
 
-### 3. Open the project
+### 2. Serve locally
+Since this is a static site, any local server works:
 
-You can simply open **index.html** in your browser or run it using **Live Server** in VS Code.
+**Option A — VS Code Live Server**
+- Right-click `index.html` → "Open with Live Server"
+
+**Option B — Python**
+```bash
+python3 -m http.server 3000
+```
+
+**Option C — Node.js (npx)**
+```bash
+npx serve .
+```
+
+Then open:
+- Customer: `http://localhost:3000`
+- Admin: `http://localhost:3000/admin.html`
+- Kitchen: `http://localhost:3000/kitchen.html`
+- Rider: `http://localhost:3000/rider.html`
+
+> **Note:** Clean URLs (`/admin`, `/kitchen`, `/rider`) only work when deployed on Vercel. Locally, use the `.html` versions.
 
 ---
 
-# 🔌 API Configuration
+## 🚢 Deployment
 
-The application automatically detects whether it is running locally or in production.
+This project is configured for **zero-config deployment on Vercel**.
 
-```
-const API = window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : 'https://kfc-narok-backend-production.up.railway.app';
-```
+1. Push to GitHub (`main` branch)
+2. Import `fuadito/MotoBite-web` on [vercel.com](https://vercel.com)
+3. Set **Framework Preset** to `Other`
+4. Leave **Build Command** and **Output Directory** empty
+5. Deploy 🚀
 
-Authentication and database operations are handled using **Supabase**.
-
----
-
-# 📱 Application Screens
-
-The platform includes:
-
-* Landing page
-* Customer ordering interface
-* Kitchen dashboard
-* Rider dashboard
-* Order tracking system
+Vercel will automatically:
+- Serve clean URLs (`/rider`, `/kitchen`, `/admin`)
+- Proxy `/api/*` requests to the Render backend
+- Apply cache headers for optimal PWA performance
 
 ---
 
-# 🚧 Future Improvements
+## 🖼️ Screenshots
 
-* M-Pesa payment integration
-* Real-time order updates with WebSockets
-* Google Maps delivery tracking
-* Admin analytics dashboard
-* Push notifications
+| Customer | Admin | Kitchen | Rider |
+|----------|-------|---------|-------|
+| *(Add screenshot)* | *(Add screenshot)* | *(Add screenshot)* | *(Add screenshot)* |
 
 ---
 
-# 👨‍💻 Author
+## 🚧 Future Improvements
 
-**Fuady Kimori**
-
-Frontend Developer passionate about building modern web applications and solving real-world problems.
-
-GitHub:
-https://github.com/fuadito
+- [ ] M-Pesa payment integration
+- [ ] Real-time order updates via WebSockets
+- [ ] Google Maps delivery tracking for riders
+- [ ] Admin analytics dashboard with charts
+- [ ] Push notifications via Firebase Cloud Messaging
+- [ ] Dark mode toggle
 
 ---
 
-# 📄 License
+## 👨‍💻 Author
 
-This project is created for **educational and portfolio purposes**.
+**Fuady Kimori** — [@fuadito](https://github.com/fuadito)
+
+Frontend Developer passionate about building modern web applications and solving real-world problems through technology.
+
+---
+
+## 📄 License
+
+This project is created for **educational and portfolio purposes**. All KFC branding elements are property of their respective owners.
