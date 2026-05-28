@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MotoBite Rider</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="/favicon.ico">
+    <base target="_blank">
+</head>
+<body>
+<aside id="toasts" role="status" aria-live="polite" aria-atomic="true"></aside>
+
+<!-- RIDER LOGIN -->
+<section id="s-rider-login" class="screen on">
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-icon">🏍️</div>
+            <h2 class="auth-title">RIDER APP</h2>
+            <p class="auth-sub">Enter your registered phone number to sign in</p>
+            <div class="field">
+                <label class="field-lbl">Phone Number</label>
+                <div style="display:flex;gap:8px">
+                    <span style="padding:12px;background:var(--dark2);border-radius:8px;color:var(--muted)">+254</span>
+                    <input class="inp" id="rid-phone" placeholder="712345678" inputmode="tel" maxlength="9" style="flex:1"/>
+                </div>
+            </div>
+            <div id="rid-err" class="auth-err" style="display:none"></div>
+            <button class="btn btn-primary btn-full" id="rid-login-btn" onclick="riderPhoneLogin()">Sign In →</button>
+            <p style="text-align:center;margin-top:16px;font-size:.85rem;color:var(--muted)">
+                New rider? 
+                <a href="#" onclick="showRiderPhoneRegister(); return false;" style="color:var(--red)">Apply here</a>
+            </p>
+            <button class="btn btn-ghost btn-full" onclick="window.location.href='/'" style="margin-top:10px">← Back to Main</button>
+        </div>
+    </div>
+</section>
+
+<!-- RIDER DASHBOARD -->
+<section id="s-rider" class="screen">
+    <div>
+        <header class="topbar">
+            <div class="topbar-in">
+                <div class="tb-logo"><div class="tb-mark"><img src="/favicon.ico" onerror="this.style.display='none'"></div><span class="tb-title">RIDER</span></div>
+                <div class="tb-right">
+                    <span class="badge b-blue">Rider</span>
+                    <button class="exit-btn" onclick="riderSignOut()">Sign Out</button>
+                </div>
+            </div>
+        </header>
+        <main>
+            <div id="rider-content"></div>
+        </main>
+        <nav class="bnav">
+            <button class="bnav-btn on" data-s="home" onclick="rPanel('home',this)"><span class="ni">🏠</span>Home</button>
+            <button class="bnav-btn" data-s="delivery" onclick="rPanel('delivery',this)"><span class="ni">📦</span>Delivery</button>
+            <button class="bnav-btn" data-s="earnings" onclick="rPanel('earnings',this)"><span class="ni">💰</span>Earnings</button>
+        </nav>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="core.js"></script>
+<script src="rider.js"></script>
+<script>
+    // Initialize rider auth on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        // Check for saved rider session
+        const saved = localStorage.getItem('mb_rider');
+        if (saved) {
+            try {
+                const rd = JSON.parse(saved);
+                if (rd.name && rd.status === 'approved') {
+                    // Restore rider state
+                    riderState = {
+                        ...riderState,
+                        name: rd.name,
+                        phone: rd.phone,
+                        rating: rd.rating || 0,
+                        deliveries: rd.deliveries || 0,
+                        status: rd.status,
+                        online: rd.online || false
+                    };
+                    document.getElementById('s-rider-login').classList.remove('on');
+                    document.getElementById('s-rider').classList.add('on');
+                    launchRider();
+                    return;
+                }
+            } catch {}
+        }
+        // No saved session — show login
+        showRiderPhoneAuth();
+    });
+</script>
+</body>
+</html>

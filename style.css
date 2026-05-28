@@ -2391,3 +2391,32 @@ a {
     padding: 10px 14px;
     font-size: .82rem;
 }
+
+.badge-cancelled {
+  background: #3a1a1a !important;
+  color: #f87171 !important;
+  border: 1px solid #f87171 !important;
+}
+
+.filter-pill {
+  background: var(--bg2);
+  color: var(--muted);
+  border: 1px solid var(--line2);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.filter-pill:hover {
+  border-color: var(--white);
+  color: var(--white);
+}
+
+.filter-pill.active {
+  background: var(--white);
+  color: var(--bg);
+  border-color: var(--white);
+}

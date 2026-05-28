@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MotoBite Kitchen</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="/favicon.ico">
+    <base target="_blank">
+<base target="_blank">
+</head>
+<body>
+  <aside id="toasts" role="status" aria-live="polite" aria-atomic="true"></aside>
+
+  <!--KITCHEN LOGIN-->
+  <section id="s-kitchen-login" class="screen on">
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-icon">👨‍🍳</div>
+            <h2 class="auth-title">KITCHEN STAFF</h2>
+            <p class="auth-sub">Enter the kitchen passcode to access the order board</p>
+            <div class="field">
+                <label class="field-lbl">Kitchen Passcode</label>
+                <input type="password" class="inp" id="kit-code" placeholder="Enter passcode" autocomplete="off"/>
+            </div>
+            <div id="kit-err" class="auth-err" style="display:none"></div>
+            <button class="btn btn-primary btn-full" id="kit-login-btn" onclick="kitchenPasscodeLogin()">Enter Kitchen →</button>
+            <button class="btn btn-ghost btn-full" onclick="window.location.href='/'" style="margin-top:10px">← Back to Main</button>
+        </div>
+    </div>
+  </section>
+
+  <!-- KITCHEN DASHBOARD -->
+  <section id="s-kitchen" class="screen">
+    <div>
+        <header class="topbar">
+            <div class="topbar-in">
+                <div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">KITCHEN</span></div>
+                <div class="tb-right">
+                    <span class="k-clock" id="k-clock">--:--</span>
+                    <span class="badge b-orange">Kitchen</span>
+                    <button class="exit-btn" onclick="kitchenSignOut()">Sign Out</button>
+                </div>
+            </div>
+        </header>
+        <main>
+            <div class="k-stats">
+                <div class="k-stat"><div class="ks-v" id="ks-new">0</div><div class="ks-l">Queued</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-cook">0</div><div class="ks-l">Cooking</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-rdy">0</div><div class="ks-l">Ready</div></div>
+                <div class="k-stat"><div class="ks-v" id="ks-done">0</div><div class="ks-l">Done Today</div></div>
+            </div>
+            <div class="k-board">
+                <section class="k-col cn">
+                    <div class="k-col-hdr"><span class="k-col-t">🆕 NEW ORDER</span><span class="k-col-ct" id="kc-n">0</span></div>
+                    <div class="k-body" id="kb-new"></div>
+                </section>
+                <section class="k-col cc">
+                    <div class="k-col-hdr"><span class="k-col-t">🔥 COOKING</span><span class="k-col-ct" id="kc-c">0</span></div>
+                    <div class="k-body" id="kb-cook"></div>
+                </section>
+                <section class="k-col cr">
+                    <div class="k-col-hdr"><span class="k-col-t">✅ READY</span><span class="k-col-ct" id="kc-r">0</span></div>
+                    <div class="k-body" id="kb-rdy"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="core.js"></script>
+  <script src="kitchen.js"></script>
+  <script>
+    // Initialize kitchen auth on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        // Check for saved kitchen session
+        const saved = localStorage.getItem('mb_kitchen_auth');
+        if (saved === '1') {
+            document.getElementById('s-kitchen-login').classList.remove('on');
+            document.getElementById('s-kitchen').classList.add('on');
+            launchKitchen();
+        }
+    });
+  </script>
+</body>
+</html>

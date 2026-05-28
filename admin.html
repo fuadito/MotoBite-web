@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MotoBite Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="/favicon.ico">
+<base target="_blank">
+</head>
+<body>
+<aside id="toasts" role="status" aria-live="polite" aria-atomic="true"></aside>
+
+<!-- ADMIN LOGIN -->
+<section id="s-admin-login" class="screen on">
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-icon">🔐</div>
+            <h2 class="auth-title">ADMIN PORTAL</h2>
+            <p class="auth-sub">Sign in with your admin email and password</p>
+            <div class="field">
+                <label class="field-lbl">Admin Email</label>
+                <input type="email" class="inp" id="adm-email" placeholder="admin@motobite.co.ke" autocomplete="email"/>
+            </div>
+            <div class="field">
+                <label class="field-lbl">Password</label>
+                <input type="password" class="inp" id="adm-pass" placeholder="Enter password" autocomplete="current-password"/>
+            </div>
+            <div id="adm-err" class="auth-err" style="display:none"></div>
+            <button class="btn-red full-w" id="adm-login-btn" onclick="adminStaffLogin()">Sign In →</button>
+            <button class="btn-ghost full-w" onclick="window.location.href='/'" style="margin-top:10px">← Back to Main</button>
+        </div>
+    </div>
+</section>
+
+<!-- ADMIN DASHBOARD -->
+<section id="s-admin" class="screen">
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="topbar-in">
+                <div class="tb-logo"><div class="tb-mark">KFC</div><span class="tb-title">ADMIN</span></div>
+                <div class="tb-right">
+                    <span class="badge b-muted">Admin</span>
+                    <button class="exit-btn" onclick="adminSignOut()">Sign Out</button>
+                </div>
+            </div>
+        </header>
+        <main>
+            <nav class="a-tabs">
+                <button class="a-tab on" onclick="aTab('overview',this)">Overview</button>
+                <button class="a-tab" onclick="aTab('orders',this)">Orders</button>
+                <button class="a-tab" onclick="aTab('riders',this)">Riders</button>
+                <button class="a-tab" onclick="aTab('menu',this)">Menu</button>
+                <button class="a-tab" onclick="aTab('revenue',this)">Revenue</button>
+                <button class="a-tab" onclick="aTab('staff',this)">Staff</button>
+            </nav>
+
+            <article id="ap-overview" class="sp on">
+                <div class="a-metrics" id="a-metrics"></div>
+                <div id="a-apps"></div>
+                <section class="a-sec">
+                    <div class="asec-t">RECENT ORDERS<button class="btn btn-ghost btn-sm" onclick="aTab('orders',null)">View All →</button></div>
+                    <div id="a-recent"></div>
+                </section>
+            </article>
+
+            <article id="ap-orders" class="sp"><section class="a-sec"><div id="a-orders"></div></section></article>
+            <article id="ap-riders" class="sp"><section class="a-sec"><div id="a-riders"></div></section></article>
+            <article id="ap-menu" class="sp"><section class="a-sec"><div id="a-menu"></div></section></article>
+            <article id="ap-revenue" class="sp"><section class="a-sec"><div id="a-revenue"></div></section></article>
+            <article id="ap-staff" class="sp"><section class="a-sec"><div id="a-staff"></div></section></article>
+        </main>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="core.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
