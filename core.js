@@ -13,8 +13,8 @@
 // === BASE SHARED CODE ===
 // CONFIG
 const API = window.location.hostname === 'localhost'
-? 'http://localhost:3000'
-: 'https://motobite-api.onrender.com'
+  ? 'http://localhost:3000'
+  : '';  // Empty string = use Vercel's /api/* proxy rewrite (no CORS issues)
 // SUPABASE AUTH
 const SUPA_URL = 'https://cylzuyhdnuvmhfjudsmf.supabase.co'; 
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5bHp1eWhkbnV2bWhmanVkc21mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNzQzNTMsImV4cCI6MjA4ODc1MDM1M30.PlZuSv0TPTvogkcMPdGFsjMugLpAPmq80E3gk_nxNns';
@@ -1612,7 +1612,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const saved = localStorage.getItem('mb_user');
   if(saved){ try{ user=JSON.parse(saved); }catch{} }
 
-  // If a ?role= param is present, ALWAYS go to that role's login
+  // ── Only run customer/rider/admin session restore on index.html ────────────
+  // kitchen.html, rider.html, admin.html each handle their own session restore
+  // in their own inline <script> block. Running this on those pages would try to
+  // call selectRole() which doesn't exist there and would crash the app.
+  const isIndexPage = !!document.getElementById('s-landing');
+  if (!isIndexPage) return;
   const urlRole = new URLSearchParams(window.location.search).get('role');
   if(urlRole === 'kitchen') { selectRole('kitchen'); return; }
   if(urlRole === 'admin')   { screen('s-admin-login'); return; }

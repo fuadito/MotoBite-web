@@ -52,10 +52,19 @@ function adminSignOut() {
     });
 }
 
+// Restore admin session on page load — if Supabase session exists, skip login screen
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const { data: { session } } = await supa.auth.getSession();
+        if (session) launchAdmin();
+    } catch(e) {
+        console.warn('Admin session restore failed:', e.message);
+    }
+});
+
 // ── LAUNCH ADMIN ────────────────────────────────────────────────────────────
 
-async function launchAdmin() {
-    screen('s-admin');
+async function launchAdmin() {    screen('s-admin');
     aTab('overview');
     startAdminRealtime();
     if (aPollInterval) clearInterval(aPollInterval);
