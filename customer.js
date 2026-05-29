@@ -1591,11 +1591,23 @@ async function cancelOrder(orderId) {
 
   if (res?.success) {
     toast('Order cancelled', 'ok');
+    
+    // STOP POLLING — clear the tracking interval
+    if (typeof oTimer !== 'undefined' && oTimer) {
+      clearInterval(oTimer);
+      oTimer = null;
+    }
+    
     // Clear any local tracking state
     localStorage.removeItem('mb_active_order');
     localStorage.removeItem('mb_order_' + orderId);
-    // Return to customer home
-    launchCustomer();
+    
+    // Go to history page instead of home (avoids re-checking active order)
+    setTimeout(() => {
+      cPanel('history');
+      loadHistory();
+    }, 500);
+    
   } else {
     toast(res?.error || 'Could not cancel order', 'err');
   }
