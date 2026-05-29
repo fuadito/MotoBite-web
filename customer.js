@@ -1242,7 +1242,7 @@ function showTracking(oid){
 }
 
 async function loadHistory(){
-  const data = await apiFetch('/api/customer/history');
+  const data = await apiFetch('/api/orders/history');
   const orders = data?.orders || [];
   document.getElementById('hist-list').innerHTML = orders.length
     ? orders.map(o => historyRow(o)).join('')
