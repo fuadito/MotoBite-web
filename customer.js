@@ -1231,14 +1231,33 @@ function showTracking(oid){
     cPanel('track');
     document.querySelectorAll('#s-customer .bnav-btn').forEach(b=>b.classList.toggle('on',b.dataset.s==='track'));
 
-      // ADD — hide cart float once order is placed
-  document.getElementById('cart-float')?.classList.add('hidden');
+    // ADD — hide cart float once order is placed
+    document.getElementById('cart-float')?.classList.add('hidden');
 
     renderTracking(oid);
-    startOrderRealtime(oid); // FIX: get instant status updates instead of waiting for next poll
+    startOrderRealtime(oid);
+
     if(oTimer) clearInterval(oTimer);
-    oTimer = setInterval(()=>renderTracking(oid), 12000);
-    setTimeout(()=>{ clearInterval(oTimer); oTimer=null; }, 300000);
+    oTimer = setInterval(()=>renderTracking(oid), 25000);
+
+    // FIX: pause polling when tab is hidden to reduce API calls (prevents 429)
+    const visibilityHandler = () => {
+        if (document.hidden && oTimer) {
+            clearInterval(oTimer);
+            oTimer = null;
+        } else if (!document.hidden && !oTimer) {
+            renderTracking(oid);
+            oTimer = setInterval(()=>renderTracking(oid), 25000);
+        }
+    };
+    document.removeEventListener('visibilitychange', visibilityHandler);
+    document.addEventListener('visibilitychange', visibilityHandler);
+
+    setTimeout(()=>{
+        clearInterval(oTimer);
+        oTimer = null;
+        document.removeEventListener('visibilitychange', visibilityHandler);
+    }, 300000);
 }
 
 async function loadHistory(){
