@@ -5,22 +5,6 @@
     {
       "source": "/api/:path*",
       "destination": "https://motobite-api.onrender.com/api/:path*"
-    },
-    {
-      "source": "/kitchen",
-      "destination": "/kitchen.html"
-    },
-    {
-      "source": "/rider",
-      "destination": "/rider.html"
-    },
-    {
-      "source": "/admin",
-      "destination": "/admin.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
   ],
   "headers": [
