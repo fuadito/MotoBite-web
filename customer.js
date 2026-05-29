@@ -1477,15 +1477,15 @@ const ratingCard = (o.status === 'delivered' && !alreadyRated) ? `
 
   // ── Cancel button ──────────────────────────────────────────────────────
   const cancelButton = (o.status === 'pending') ? `
-    <div class="card" style="margin-top:11px;text-align:center">
-      <button onclick="cancelOrder(${oid})" class="btn btn-ghost btn-full" style="color:var(--red);border-color:var(--red)">
-        ❌ Cancel Order
-      </button>
-      <p style="color: var(--muted); font-size: 12px; margin-top: 8px;">
-        You can cancel while awaiting payment. This cannot be undone.
-      </p>
-    </div>
-  ` : '';
+  <div class="card" style="margin-top:11px;text-align:center">
+    <button type="button" onclick="cancelOrder('${oid}')" class="btn btn-ghost btn-full" style="color:var(--red);border-color:var(--red)">
+      ❌ Cancel Order
+    </button>
+    <p style="color: var(--muted); font-size: 12px; margin-top: 8px;">
+      You can cancel while awaiting payment. This cannot be undone.
+    </p>
+  </div>
+` : '';
 
     // ── Render HTML ────────────────────────────────────────────────────────
   document.getElementById('track-body').innerHTML = `
